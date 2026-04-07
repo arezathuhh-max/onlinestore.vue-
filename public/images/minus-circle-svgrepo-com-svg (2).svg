@@ -1,0 +1,9 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30">
+	<title>minus-circle-svgrepo-com-svg</title>
+	<style>
+		.s0 { fill: none;stroke: #1c274c;stroke-width: 1.5 } 
+		.s1 { fill: none;stroke: #1c274c;stroke-linecap: round;stroke-width: 1.5 } 
+	</style>
+	<path class="s0" d="m12 22c-5.5 0-10-4.5-10-10 0-5.5 4.5-10 10-10 5.5 0 10 4.5 10 10 0 5.5-4.5 10-10 10z"/>
+	<path class="s1" d="m15 12h-6"/>
+</svg>

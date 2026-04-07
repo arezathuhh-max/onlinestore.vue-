@@ -1,0 +1,626 @@
+@import url('https://googleapis.com');
+
+*,
+*::after,
+*::before {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+ul {
+  list-style-type: none;
+}
+a {
+  color: white;
+  text-decoration: none;
+}
+#app {
+  min-height: 100vh;
+
+  font-size: 16px;
+  font-weight: 400;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.3;
+}
+.wrapper {
+  /*min-height: 100%;
+  height: 100%;*/
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+h1,
+p {
+  font-size: 16px;
+  font-weight: 400;
+  font-family: Inter, sans-serif;
+
+  line-height: 1.3;
+}
+.container {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 0 10px;
+}
+
+.menu {
+  background-color: #232f3e;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 158px;
+}
+.menu__list {
+  display: flex;
+  gap: 35px;
+  margin-bottom: auto;
+}
+
+.menu__list-link {
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.site-sales {
+  display: none;
+  padding: 10px;
+  font-size: 24px;
+  letter-spacing: 0.96px;
+  text-align: center;
+  color: white;
+}
+.site-sales h1 {
+  font-weight: 700;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 35px;
+}
+.site-sales p {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Times New Roman', Times, serif;
+  text-align: center;
+}
+.winter {
+  background-color: #769ab7;
+  display: block;
+}
+.spring {
+  background-color: #ffa500;
+  display: block;
+}
+
+.summer {
+  background-color: #3e7a0a;
+  display: block;
+}
+.fall {
+  background-color: #560a7a;
+  display: block;
+}
+
+.footer__end-text {
+}
+
+main {
+  flex-grow: 1;
+}
+.top {
+  color: #fff;
+  text-align: center;
+  padding-top: 250px;
+  padding-bottom: 50px;
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+}
+
+.title {
+  padding-bottom: 40px;
+  font-size: 46px;
+  font-weight: 700;
+}
+
+.top__link {
+  background-color: rgb(20, 71, 30);
+  max-width: 430px;
+  width: 100%;
+  display: inline-block;
+  text-transform: uppercase;
+  font-size: 30px;
+  font-weight: 700;
+  padding: 23px;
+}
+
+.swiper-slide {
+  height: 100vh;
+}
+
+/*.what-we-do*/
+
+.what_we_do {
+  margin: 0 auto 50px;
+}
+.what_we_do2 {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 20px;
+  padding-bottom: 30px;
+}
+
+.what_we_do_item {
+  padding-right: 25px;
+}
+
+.what_we_do_img {
+  /* position: absolute; */
+  z-index: 1;
+}
+#img1 {
+  color: #9cbaa9;
+}
+#img2 {
+  color: #d28b9a;
+}
+#img3 {
+  color: #99bda8;
+}
+#img4 {
+  color: #718570;
+}
+#img5 {
+  color: #be586f;
+}
+#img6 {
+  color: #d88c86;
+}
+#img7 {
+  color: #00737c;
+}
+#img8 {
+  color: #718570;
+}
+
+/*WHAT-WE-DO*/
+
+/*small information*/
+
+.small_information {
+  text-align: center;
+}
+
+.container2 {
+  max-width: 1450px;
+  margin: 0 auto;
+  padding: 0 10px;
+}
+
+.small_information_2 {
+  padding: 10px 10px;
+  height: 224px;
+  background-color: #f1efeb;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.information_item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background-color: #fff;
+  padding-top: 20px;
+  padding-bottom: 35px;
+  font-family: serif;
+  margin-left: 25%;
+  margin-right: 25%;
+  margin-top: 10px;
+}
+
+.information_img {
+  margin-left: 18%;
+  margin-right: 18%;
+}
+
+.information_text {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+/*small information*/
+
+/*new-bestsellers*/
+.new_bestsellers {
+  margin-bottom: 40px;
+  padding-left: 45px;
+  padding-right: 45px;
+}
+
+.new_title {
+  font-family: serif;
+  font-weight: 200;
+  text-align: center;
+  margin-bottom: 20px;
+}
+/*
+.new_slider {
+  height: 40vh;
+}*/
+/*
+.new_slide {
+  /* Картинка заполнит весь слайд без искажений 
+  background-size: cover;
+
+  /* Картинка всегда будет по центру 
+background-position: center;
+
+/* Чтобы картинка не дублировалась, если она маленькая 
+  background-repeat: no-repeat;
+
+  /* Обязательно задайте высоту, иначе слайд будет схлопнут 
+  /* height: 500px;
+}*/
+.new_slide {
+  min-height: 40vh;
+  position: relative; /* Чтобы элементы внутри позиционировались относительно слайда */
+  /*background-size: cover;*/
+  background-size: contain !important;
+
+  background-position: center;
+  background-repeat: no-repeat;
+  /* Верните высоту, чтобы слайд не был пустым */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* Текст прижмется к низу */
+  overflow: hidden;
+}
+/* 1. Убираем серый фон у обертки */
+
+.swiper-wrapper {
+  background: transparent !important;
+}
+/* 2. Растягиваем картинку внутри на 101% (убирает микро-щели) */
+/*
+.new_slider,
+.swiper-slide img {
+  width: 100% !important;
+  object-fit: cover;
+}*/
+/*
+.new_slide {
+  width: 100%;
+  background-size: cover;
+  background-position: center;
+}*/
+
+.slide_text {
+  padding-top: 15px; /* Отступ текста от нижней границы картинки */
+  color: black;
+}
+
+/* Стили для сердечка */
+.heart-btn {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  fill: rgba(255, 255, 255, 0.7);
+  transition: fill 0.3s;
+}
+
+.heart-btn.is-active {
+  fill: #ff4d4d;
+}
+.slide_text a {
+  text-decoration: none;
+  color: black;
+}
+.slide_p {
+  color: rgb(178 16 16);
+  font-size: 13px;
+}
+
+.price-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.old-price {
+  text-decoration: line-through;
+  color: gray;
+  font-size: 13px;
+}
+.current-price {
+  font-weight: bold;
+  font-size: 13px;
+  color: rgb(178 16 16);
+  margin-left: -5px;
+}
+
+.old-price {
+  text-decoration: line-through;
+  color: gray;
+  margin-left: 10px;
+  font-size: 13px;
+}
+.swiper-container-wrapper {
+  position: relative;
+  width: 100%;
+  display: block;
+  padding: 0 10px;
+}
+
+.new_slider,
+.best_slider {
+  position: relative; /* Чтобы стрелки прилипли к краям именно этого слайдера */
+  overflow: hidden;
+  width: 100%;
+  /*adding: 0 30px !im
+  portant; /* Создаем "коридор" для стрелок внутри */
+}
+
+/* Центрируем по высоте 40vh */
+/* 2. Настраиваем круг и центрируем ваш SVG */
+.new-prev,
+.new-next {
+  width: 40px !important;
+  height: 40px !important;
+  background: white !important;
+  border-radius: 50%;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  z-index: 999;
+  top: 20vh !important;
+  /*transform: translateY(-50%) !important; /* Центровка по вертикали */
+  pointer-events: all !important; /* Разрешает прохождение клика через любые слои */
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  color: transparent !important;
+}
+
+/* 3. Фиксируем размер SVG внутри круга */
+.new-prev svg,
+.new-next svg {
+  width: 20px !important;
+  height: 20px !important;
+  display: block;
+}
+
+.new-prev {
+  left: -20px !important;
+} /* Вылет влево */
+.new-next {
+  right: -20px !important;
+}
+
+.discount-badge {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: #ff4d4d;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 14px;
+  z-index: 5;
+}
+
+.new_slide {
+  display: block;
+  transition: background-image 0.3s ease-in-out; /* Плавная смена фото */
+}
+
+/*new-bestsellers*/
+
+/*bestsellers*/
+.bestsellers {
+  margin-bottom: 40px;
+}
+.bestsellers_2 {
+  padding-left: 2px;
+  padding-right: 10px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.bestsellers_item {
+  position: relative;
+}
+#bestsellers_text1 {
+  position: absolute;
+  font-size: 14px;
+  left: 30%;
+  bottom: 2%;
+  text-transform: uppercase;
+  font-family: 'Oswald', sans-serif;
+  color: #000;
+  z-index: 10;
+  bottom: 5%;
+  width: 250px;
+  padding: 10px;
+  background-color: #000000;
+  color: #fff;
+  text-align: center;
+}
+#bestsellers_text2 {
+  position: absolute;
+  font-size: 14px;
+  left: 30%;
+  text-transform: uppercase;
+  font-family: 'Oswald', sans-serif;
+  color: #000;
+  z-index: 10;
+  bottom: 5%;
+  width: 250px;
+  padding: 10px;
+  background-color: #000000;
+  color: #fff;
+  text-align: center;
+}
+#bestsellers_text3 {
+  position: absolute;
+  font-size: 14px;
+  left: 42%;
+  text-transform: uppercase;
+  font-family: 'Oswald', sans-serif;
+  z-index: 10;
+  bottom: 5%;
+  width: 250px;
+  padding: 10px;
+  background-color: #000000;
+  color: #fff;
+  text-align: center;
+}
+
+/*bestsellers*/
+
+/*new pictures*/
+.new_pictures {
+  margin-bottom: 70px;
+  padding-left: 45px;
+  padding-right: 45px;
+}
+.pictures_title {
+  font-family: serif;
+  font-weight: 200;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.best-next,
+.best-prev {
+  width: 40px !important;
+  height: 40px !important;
+  background: white !important;
+  border-radius: 50%;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  z-index: 999;
+  top: 20vh !important;
+  /*transform: translateY(-50%) !important; /* Центровка по вертикали */
+  pointer-events: all !important; /* Разрешает прохождение клика через любые слои */
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  color: transparent !important;
+}
+
+.best-prev svg,
+.best-next svg {
+  width: 20px !important;
+  height: 20px !important;
+  display: block;
+} /*
+.best_slide {
+  display: block;
+  transition: background-image 0.3s ease-in-out; /* Плавная смена фото 
+  min-height: 40vh;
+  position: relative; /* Чтобы элементы внутри позиционировались относительно слайда 
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  /* Верните высоту, чтобы слайд не был пустым 
+  width: 100%;
+
+  flex-direction: column;
+  justify-content: flex-end; /* Текст прижмется к низу 
+  overflow: hidden;
+}*/
+
+.best_slide {
+  height: 40vh !important; /* Строго фиксируем высоту, как у первого */
+  display: block !important;
+  width: 100% !important;
+  background-repeat: no-repeat !important; /* Запрещает повторение */
+
+  background-size: contain !important;
+  background-position: center !important;
+  position: relative;
+  overflow: hidden; /* Чтобы скидка не вылетала */
+}
+/*
+.new_slide {
+  height: 40vh !important; /* Строго фиксируем высоту, как у первого 
+  display: block !important;
+  width: 100% !important;
+  background-repeat: no-repeat !important; /* Запрещает повторение 
+
+  background-size: contain !important;
+  background-position: center !important;
+  position: relative;
+  overflow: hidden; /* Чтобы скидка не вылетала 
+}*/
+
+/*new pictures*/
+
+/*last blog*/
+.last_blog {
+  margin-top: 20px;
+  margin-bottom: 100px;
+}
+
+.title_main {
+  margin-bottom: 50px;
+  text-align: center;
+  text-transform: uppercase;
+}
+.blok_container {
+  display: flex;
+  flex-direction: row;
+}
+.blok_item {
+  width: 49%;
+  margin-bottom: 50px;
+}
+.blok_item a {
+  display: block;
+}
+
+.blok_title {
+  text-transform: uppercase;
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+.blok_text {
+  font-family: serif;
+  font-weight: 200;
+  font-size: 14px;
+}
+
+.blok_text,
+.blok_title {
+  color: #000 !important; /* или любой другой видимый цвет */
+}
+
+.color {
+  color: #000;
+}
+.blok_content {
+  font-family: serif;
+  font-weight: 200;
+  font-size: 14px;
+}
+
+.blok_item a.color {
+  display: inline !important; /* Запрещаем перенос на новую строку */
+  float: none !important; /* Отключаем обтекание, если оно есть */
+  width: auto !important; /* Убираем фиксированную ширину */
+  margin-right: 5px !important; /* Пробел между ссылками */
+  white-space: normal !important; /* Разрешаем перенос только слов, не всей ссылки */
+}
+.blok_item a.color:hover {
+  opacity: 0.5;
+}
+/*last blog*/
