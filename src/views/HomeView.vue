@@ -376,7 +376,7 @@ onMounted(async () => {
         <div class="container">
           <h1 class="title">более 500 различных обрамлений для рам</h1>
 
-          <a href="" class="top__link">Найти обрамление</a>
+          <router-link to="/catalog" class="top__link">Найти обрамление</router-link>
         </div>
       </section>
       <div class="slider">

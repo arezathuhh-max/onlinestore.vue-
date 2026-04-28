@@ -1,3 +1,13 @@
+<script setup>
+import { ref } from 'vue'
+
+const activeBlock = ref(null) // Хранит 'heart', 'cart' или null
+
+const toggle = (name) => {
+  activeBlock.value = activeBlock.value === name ? null : name
+}
+</script>
+
 <template>
   <header class="header header-main">
     <div class="header_inner">
@@ -20,12 +30,12 @@
 
         <div class="purchase_navigation">
           <div class="icon">
-            <router-link to="/placingAnOrder"
-              ><img src="/images/card (1).png" alt=""
-            /></router-link>
+            <div class="cart_icon">
+              <img src="/images/card (1).png" @click="toggle('cart')" alt="" />
+            </div>
             <span class="cart_quantity">3</span>
           </div>
-          <div class="purchase purchase--open">
+          <div class="purchase" :class="{ 'purchase--open': activeBlock === 'cart' }">
             <div class="purchase_top">
               <h2 class="purchase_title">Карзина</h2>
               <div class="purchase_products">
@@ -203,7 +213,7 @@
         </div>
         <div class="heart_navigation">
           <div class="icon">
-            <router-link to="/About.vue">
+            <div @click="toggle('heart')">
               <div class="icon_heart">
                 <svg
                   class="icon_heart2 icon_heart2--active"
@@ -221,12 +231,13 @@
                     stroke-width="2"
                     d="M12.01 6.001C6.5 1 1 8 5.782 13.001L12.011 20l6.23-7C23 8 17.5 1 12.01 6.002Z"
                   />
-                </svg></div
-            ></router-link>
+                </svg>
+              </div>
+            </div>
             <span class="cart_quantity">3</span>
           </div>
 
-          <div class="heart heart--open">
+          <div class="heart" :class="{ 'heart--open': activeBlock === 'heart' }">
             <div class="purchase_top">
               <h2 class="heart_title">Избранное</h2>
               <div class="purchase_products">
@@ -362,6 +373,9 @@
 
 <style>
 /*carzina*/
+.cart_icon {
+  cursor: pointer;
+}
 .header {
   background-color: #151515;
 }
@@ -813,7 +827,9 @@
   align-items: center;
   background-color: #fff;
   transition: background-color 0.3s;
+  cursor: pointer;
 }
+
 .purchase-toggle2heart {
   position: absolute;
   width: 25px;
@@ -883,5 +899,3 @@
 
 /*CARZINA  */
 </style>
-
-<script></script>

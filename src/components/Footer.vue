@@ -38,19 +38,21 @@
             <p class="footer__menu-title">навигация</p>
           </li>
           <li class="footer__menu-item">
-            <a class="footer__menu-link" href="#">католог</a>
+            <router-link to="catalog" class="footer__menu-link" href="#">католог</router-link>
           </li>
           <li class="footer__menu-item">
-            <a class="footer__menu-link" href="#">наши работы</a>
+            <router-link to="ourworks" class="footer__menu-link" href="#">наши работы</router-link>
           </li>
           <li class="footer__menu-item">
-            <a class="footer__menu-link" href="#">адрес</a>
+            <router-link to="adress" class="footer__menu-link" href="#">адрес</router-link>
           </li>
           <li class="footer__menu-item">
-            <a class="footer__menu-link" href="#">наши контакты</a>
+            <router-link to="ourContacts" class="footer__menu-link" href="#"
+              >наши контакты</router-link
+            >
           </li>
           <li class="footer__menu-item">
-            <a class="footer__menu-link" href="#">о нас</a>
+            <router-link to="about" class="footer__menu-link" href="#">о нас</router-link>
           </li>
         </ul>
         <ul class="footer__menu-list">

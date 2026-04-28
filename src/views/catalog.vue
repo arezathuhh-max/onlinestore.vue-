@@ -1,6 +1,27 @@
 <script setup>
 import { ref } from 'vue'
+import { onMounted } from 'vue'
+import { createClient } from '@supabase/supabase-js'
 
+const supabase = createClient(
+  'https://aqfposmbxcqbpumvydhb.supabase.co',
+  'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
+)
+
+const products = ref([])
+
+onMounted(async () => {
+  // 1. Берем данные из таблицы
+  const { data } = await supabase.from('products').select('*')
+  products.value = data
+
+  // 2. Рисуем на каждом канвасе после того, как Vue их создаст
+  setTimeout(() => {
+    data.forEach((p) =>
+      drawFullFrame(`canvas-${p.id}`, p.image_url, 300, p.image_url, 300, 30, false),
+    )
+  }, 100)
+})
 // 1. Создаем реактивную переменную (по умолчанию 5)
 const selectedCount = ref(5)
 
@@ -14,6 +35,334 @@ const isFilterOpen2 = ref(true)
 
 const isFilterOpen3 = ref(true)
 const isFilterOpen4 = ref(true)
+
+const iscustomopen = ref(false)
+const selectedText = ref('сортировать по последним')
+
+const selectItem = (text) => {
+  selectedText.value = text // Обновляем текст в заголовке
+  iscustomopen.value = false // Закрываем список после выбора
+}
+
+function drawFullFrame(canvasId, textureUrl, frameW, photoUrl, frameH, s, isStretch) {
+  const canvas = document.getElementById(canvasId)
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  // Устанавливаем размер холста равным размеру рамы
+  Object.assign(canvas, { width: frameW, height: frameH })
+
+  const img = new Image()
+  img.src = textureUrl
+
+  img.onload = () => {
+    const pattern = ctx.createPattern(img, 'repeat')
+    // ВСТАВИТЬ СЮДА:
+    pattern.setTransform(new DOMMatrix().scale(s / 270, s / 270))
+    /* const matrix = new DOMMatrix().scale(s / /*img.height270)*/
+
+    /*   pattern.setTransform(matrix)*/
+
+    ctx.fillStyle = pattern
+
+    const sides = [
+      [0, 0, frameW, 0, frameW - s, s, s, s],
+      [frameW, 0, frameW, frameH, frameW - s, frameH - s, frameW - s, s],
+      [frameW, frameH, 0, frameH, s, frameH - s, frameW - s, frameH - s],
+      [0, frameH, 0, 0, s, s, s, frameH - s],
+    ]
+
+    sides.forEach((points, index) => {
+      ctx.save()
+
+      ctx.beginPath()
+      ctx.moveTo(points[0], points[1])
+      for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1])
+      ctx.closePath()
+
+      ctx.clip()
+      /* ctx.lineWidth = 5
+      ctx.strokeStyle = pattern
+      ctx.stroke()*/
+
+      /* ctx.strokeStyle = pattern
+      ctx.lineWidth = 30
+      ctx.stroke()*/
+      if (isStretch) {
+        // Если лепнина: поворачиваем и тянем
+        const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
+        const translates = [
+          [0, 0],
+          [frameW, 0],
+          [frameW, frameH],
+          [0, frameH],
+        ]
+        const len = index % 2 === 0 ? frameW : frameH
+        ctx.translate(...translates[index])
+        ctx.rotate(angles[index])
+        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, len, s)
+      } else {
+        /* const ctx = canvas.getContext('2d')
+
+        // Если дерево: твой привычный метод заливки
+        ctx.fillRect(0, 0, frameW, frameH)*/
+        const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
+        const translates = [
+          [0, 0],
+          [frameW, 0],
+          [frameW, frameH],
+          [0, frameH],
+        ]
+        const len = index % 2 === 0 ? frameW : frameH
+        ctx.translate(...translates[index])
+        ctx.rotate(angles[index])
+
+        ctx.fillRect(0, 0, len, s)
+        ctx.fillRect(0, 0, len + 1, s)
+      }
+      ctx.restore()
+    })
+
+    // 1. Создаем объект для внутреннего фото
+    const photo = new Image()
+    photo.src = photoUrl // Замените на нужный URL
+    photo.onload = () => {
+      // 2. Рисуем фото строго в границах внутреннего проема
+      /*ctx.drawImage(photo, s, s, frameW - 2 * s, frameH - 2 * s)*/
+      /*ctx.drawImage(photo, s - 10, s - 10, frameW - 2 * s + 20, frameH - 2 * s + 20)*/
+      ctx.drawImage(
+        photo,
+        0,
+        0,
+        photo.width,
+        photo.height,
+        s - 13,
+        s - 13,
+        frameW - 2 * s + 26,
+        frameH - 2 * s + 26,
+      )
+      const g = ctx.createLinearGradient(s, s, frameW, frameH)
+      g.addColorStop(0, 'rgba(255,255,255,0.9)')
+      g.addColorStop(0.5, 'rgba(255,255,255,0)')
+      g.addColorStop(1, 'rgba(255,255,255,0.1)')
+      ctx.fillStyle = g
+      ctx.fillRect(s - 13, s - 13, frameW - 2 * s + 26, frameH - 2 * s + 26)
+
+      // Финальный штрих: внутренняя тень строго внутри проема
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(s, s, frameW - 2 * s, frameH - 2 * s) // Ограничиваем область "окном"
+      ctx.clip()
+
+      ctx.shadowBlur = 15
+      ctx.shadowColor = 'rgba(0,0,0,0.7)'
+      /* ctx.strokeRect(s, s, frameW - 2 * s, frameH - 2 * s) // Тень ляжет только внутрь*/
+      ctx.strokeRect(s - 13, s - 13, frameW - 2 * s + 26, frameH - 2 * s + 26).ctx.restore()
+    }
+    /*  незабыть сделать функционал по условию if можно через кнопку создать двойную раму в конструкторе    и в польшекгда начнем прдавать  програмист чтобы зашифровал код и  и сделал эффеекты как у обложки vogue     */
+  }
+}
+
+const loadAndDraw = async (fileName) => {
+  const { data } = supabase.storage.from('products').getPublicUrl('baget3.jpg')
+
+  // Вызываем твою функцию отрисовки, передавая полученный URL
+  drawFullFrame('canvasId1', data.publicUrl, 800, data.publicUrl, 600, 50, false)
+}
+/*
+onMounted(() => {
+  drawFullFrame(
+    'testCanvas',
+    '/public/images/baget3.jpg',
+    200,
+    '/public/images/new-photo1.png',
+    270,
+    50,
+    false,
+  )
+})*/
+const isVisible = ref(true)
+/*
+const products = ref([
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    discount: 'скидка',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [
+      {
+        text: 'новинка',
+        class: 'product-prop product__prop new',
+        text: 'скидка',
+        class: 'product__prop2 sales',
+      },
+    ],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    discount: 'скидка',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [
+      {
+        text: 'Хит продаж',
+        class: 'product-prop product__prop best',
+        text: 'скидка',
+        class: 'product__prop2 sales',
+      },
+    ],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [{ text: 'Хит продаж', class: 'product-prop product__prop best' }],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+  {
+    id: 1,
+    title: 'Eyes Mesh Boat Shoes',
+    price: '$220.00',
+    imgDefault: '/images/works22 (1) (2) (3).png',
+    imgHover: 'images/pictures.2 (1).png',
+    currentImg: '/images/works22 (1) (2) (3).png',
+    // Массив меток: у кого-то их 3, у кого-то 0
+    tags: [],
+  },
+
+  // ... другие товары
+])*/
 </script>
 
 <template>
@@ -23,9 +372,15 @@ const isFilterOpen4 = ref(true)
         <div class="catalog__content">
           <div class="container4">
             <div class="catalog__filters">
-              <button class="hide__filters btn__rest">скрыть параметры</button>
+              <button class="hide__filters btn__rest" @click="isVisible = !isVisible">
+                скрыть параметры
+              </button>
 
-              <div class="catalog__filter" :class="{ 'catalog__filter--open': isFilterOpen }">
+              <div
+                v-if="isVisible"
+                class="catalog__filter"
+                :class="{ 'catalog__filter--open': isFilterOpen }"
+              >
                 <div class="catalog__filter-top">
                   <div class="catalog__filter-caption">
                     <h3 class="catalog__filter-title">категории</h3>
@@ -105,7 +460,11 @@ const isFilterOpen4 = ref(true)
                 </div>
               </div>
 
-              <div class="catalog__filter" :class="{ 'catalog__filter--open': isFilterOpen2 }">
+              <div
+                v-if="isVisible"
+                class="catalog__filter"
+                :class="{ 'catalog__filter--open': isFilterOpen2 }"
+              >
                 <div class="catalog__filter-top">
                   <div class="catalog__filter-caption">
                     <h3 class="catalog__filter-title">цвет</h3>
@@ -182,7 +541,11 @@ const isFilterOpen4 = ref(true)
                 </div>
               </div>
 
-              <div class="catalog__filter" :class="{ 'catalog__filter--open': isFilterOpen3 }">
+              <div
+                v-if="isVisible"
+                class="catalog__filter"
+                :class="{ 'catalog__filter--open': isFilterOpen3 }"
+              >
                 <div class="catalog__filter-top">
                   <div class="catalog__filter-caption">
                     <h3 class="catalog__filter-title">размер</h3>
@@ -259,7 +622,11 @@ const isFilterOpen4 = ref(true)
                 </div>
               </div>
 
-              <div class="catalog__filter" :class="{ 'catalog__filter--open': isFilterOpen4 }">
+              <div
+                v-if="isVisible"
+                class="catalog__filter"
+                :class="{ 'catalog__filter--open': isFilterOpen4 }"
+              >
                 <div class="catalog__filter-top">
                   <div class="catalog__filter-caption">
                     <h3 class="catalog__filter-title">скидки</h3>
@@ -340,13 +707,24 @@ const isFilterOpen4 = ref(true)
                     </ul>
                   </div>
                   <div class="custom-select" tabindex="0">
-                    <div class="custom-select__top">сортировать по последним</div>
-                    <div class="custom-select__dropdown">
+                    <div class="custom-select__top" @click="iscustomopen = !iscustomopen">
+                      {{ selectedText }}
+                    </div>
+                    <div class="custom-select__dropdown" :class="{ 'custom-select': iscustomopen }">
                       <ul class="custom-select__list">
-                        <li class="custom-select__item">сортировать по последним</li>
-                        <li class="custom-select__item">сортировать по цене</li>
+                        <li
+                          class="custom-select__item"
+                          @click="selectItem('сортировать по последним')"
+                        >
+                          сортировать по последним
+                        </li>
+                        <li class="custom-select__item" @click="selectItem('сортировать по цене')">
+                          сортировать по цене
+                        </li>
 
-                        <li class="custom-select__item">сортировать по новым</li>
+                        <li class="custom-select__item" @click="selectItem('сортировать по новым')">
+                          сортировать по новым
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -388,201 +766,45 @@ const isFilterOpen4 = ref(true)
                 </button>
                 <button class="btn-reset catalog-choice__clear">clear all</button>
               </div>
+
+              <canvas id="testCanvas"></canvas>
+
               <ul class="catalog-grid__content" :data-grid-colums="selectedCount">
-                <li class="catalog__grid-item">
+                <li v-for="product in products" :key="product.id" class="catalog__grid-item">
                   <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product-prop product__prop new">новинка</span>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <span class="product__sale">скидка</span>
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product__prop2 sales">скидка</span>
+                    <!-- router-link теперь и есть блок с картинкой -->
+                    <router-link :to="product.link" class="product__image">
+                      <canvas :id="'canvas-' + product.id">
+                        /*:src="product.currentImg"*/ @mouseover="product.currentImg =
+                        product.imgHover" @mouseleave="product.currentImg = product.imgDefault"
+                        alt="product-1"
+                      </canvas>
+                    </router-link>
+                    <span v-if="product.discount" class="product__sale">
+                      {{ product.discount }}
+                    </span>
+                    <!-- Плашки поверх картинки -->
+                    <span v-for="(tag, index) in product.tags" :key="index" :class="tag.class">
+                      {{ tag.text }}
+                    </span>
 
                     <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
+                      <router-link :to="product.link" class="catalog_link_color">{{
+                        product.title
+                      }}</router-link>
                     </h3>
-
-                    <span class="product__price">$220.00 </span>
-
-                    <span class="product__oldprice">$210.00</span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product-prop product__prop best">Хит продаж</span>
-
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <span class="product__sale">скидка</span>
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product__prop2 sales">скидка</span>
-
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-
-                    <span class="product__oldprice">$210.00</span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product-prop product__prop new">новинка</span>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <span class="product__sale">скидка</span>
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product__prop2 sales">скидка</span>
-
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-
-                    <span class="product__oldprice">$210.00</span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product-prop product__prop best">Хит продаж</span>
-
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-                  </article>
-                </li>
-
-                <li class="catalog__grid-item">
-                  <article class="product">
-                    <div class="product__image">
-                      <span class="product__sale">скидка</span>
-                      <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                    </div>
-                    <span class="product__prop2 sales">скидка</span>
-
-                    <h3 class="product__title">
-                      <router-link class="catalog_link_color"> Eyes Mesh Boat Shoes </router-link>
-                    </h3>
-
-                    <span class="product__price">$220.00 </span>
-
-                    <span class="product__oldprice">$210.00</span>
+                    <span class="product__price">{{ product.price }}</span>
                   </article>
                 </li>
               </ul>
 
               <ul class="pagination">
                 <li class="pagination__item">
-                  <router-link class="pagination__link pagination__link--current">1</router-link>
+                  <a href="#" class="pagination__link pagination__link--current">1</a>
                 </li>
-                <li class="pagination__item">
-                  <router-link class="pagination__link">2 </router-link>
-                </li>
+                <li class="pagination__item"><a href="#" class="pagination__link">2</a></li>
 
-                <li class="pagination__item">
-                  <router-link class="pagination__link">3</router-link>
-                </li>
+                <li class="pagination__item"><a href="#" class="pagination__link">3</a></li>
 
                 <li class="pagination__item">
                   <a href="#" class="pagination__link"
@@ -622,13 +844,21 @@ const isFilterOpen4 = ref(true)
   margin-right: 30px;
 }*/
 /*catalog***************/
+.product {
+  position: relative;
+}
 .product__image {
+  display: block;
   overflow: hidden;
   position: relative;
   max-height: 100%;
   object-fit: cover;
-  margin-bottom: 20px;
 }
+
+.product__image span {
+  margin-right: 8px; /* Расстояние между ними */
+}
+
 .product__sale {
   position: absolute;
   left: 20px;
@@ -644,6 +874,7 @@ const isFilterOpen4 = ref(true)
   border-radius: 4px;
   font-weight: bold;
   font-size: 12px;
+  z-index: 10;
 }
 .catalog_link_color {
   color: #000;
@@ -759,7 +990,6 @@ const isFilterOpen4 = ref(true)
   width: 309px;
   padding-top: 27px;
   padding-right: 62px;
-
   border-top: 1px solid #eee;
   margin-right: 30px;
 }
@@ -1003,7 +1233,11 @@ const isFilterOpen4 = ref(true)
   position: absolute;
   left: 2px;
   top: 0;
-  color: #aaa;
+  color: #000000;
+  display: none;
+}
+.custom__checkbox-input:checked + .custom__checkbox-text::after {
+  display: block;
 }
 
 /**catalog__grid******************/
@@ -1103,6 +1337,7 @@ const isFilterOpen4 = ref(true)
 }
 .custom-select__item:not(:last-child) {
   margin-bottom: 10px;
+  border-bottom: 1px solid #ccc;
 }
 
 .custom-select__top {
