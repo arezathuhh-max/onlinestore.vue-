@@ -1,27 +1,15 @@
 <script setup>
-import { ref } from 'vue'
-import { onMounted } from 'vue'
+import { ref, watch, nextTick } from 'vue'
+import { onMounted, computed } from 'vue'
 import { createClient } from '@supabase/supabase-js'
+import { bus } from './bus.js'
+import { drawFullFrame } from '../utils.js'
 
 const supabase = createClient(
   'https://aqfposmbxcqbpumvydhb.supabase.co',
   'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
 )
 
-const products = ref([])
-
-onMounted(async () => {
-  // 1. Берем данные из таблицы
-  const { data } = await supabase.from('products').select('*')
-  products.value = data
-
-  // 2. Рисуем на каждом канвасе после того, как Vue их создаст
-  setTimeout(() => {
-    data.forEach((p) =>
-      drawFullFrame(`canvas-${p.id}`, p.image_url, 300, p.image_url, 300, 30, false),
-    )
-  }, 100)
-})
 // 1. Создаем реактивную переменную (по умолчанию 5)
 const selectedCount = ref(5)
 
@@ -29,139 +17,53 @@ const selectedCount = ref(5)
 const setColumns = (num) => {
   selectedCount.value = num
 }
-
+// Переменные для открытия боковых фильтров (параметры сбоку)
+const isVisible = ref(true)
 const isFilterOpen = ref(true)
 const isFilterOpen2 = ref(true)
-
 const isFilterOpen3 = ref(true)
 const isFilterOpen4 = ref(true)
 
+// Переменные для работы выпадающего списка (сортировка)
 const iscustomopen = ref(false)
-const selectedText = ref('сортировать по последним')
+const selectedText = ref('по умолчанию')
 
+// Функция для выбора из списка (чтобы закрывался при клике)
 const selectItem = (text) => {
-  selectedText.value = text // Обновляем текст в заголовке
-  iscustomopen.value = false // Закрываем список после выбора
+  selectedText.value = text
+  iscustomopen.value = false
 }
+const products = ref([])
 
-function drawFullFrame(canvasId, textureUrl, frameW, photoUrl, frameH, s, isStretch) {
-  const canvas = document.getElementById(canvasId)
-  const ctx = canvas.getContext('2d')
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  // Устанавливаем размер холста равным размеру рамы
-  Object.assign(canvas, { width: frameW, height: frameH })
+onMounted(async () => {
+  // 1. Берем данные из таблицы
+  /* const { data } = await supabase.from('products').select('*')*/
+  const { data } = await supabase.from('products').select('*').order('id', { ascending: true })
 
-  const img = new Image()
-  img.src = textureUrl
+  products.value = data
 
-  img.onload = () => {
-    const pattern = ctx.createPattern(img, 'repeat')
-    // ВСТАВИТЬ СЮДА:
-    pattern.setTransform(new DOMMatrix().scale(s / 270, s / 270))
-    /* const matrix = new DOMMatrix().scale(s / /*img.height270)*/
-
-    /*   pattern.setTransform(matrix)*/
-
-    ctx.fillStyle = pattern
-
-    const sides = [
-      [0, 0, frameW, 0, frameW - s, s, s, s],
-      [frameW, 0, frameW, frameH, frameW - s, frameH - s, frameW - s, s],
-      [frameW, frameH, 0, frameH, s, frameH - s, frameW - s, frameH - s],
-      [0, frameH, 0, 0, s, s, s, frameH - s],
-    ]
-
-    sides.forEach((points, index) => {
-      ctx.save()
-
-      ctx.beginPath()
-      ctx.moveTo(points[0], points[1])
-      for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1])
-      ctx.closePath()
-
-      ctx.clip()
-      /* ctx.lineWidth = 5
-      ctx.strokeStyle = pattern
-      ctx.stroke()*/
-
-      /* ctx.strokeStyle = pattern
-      ctx.lineWidth = 30
-      ctx.stroke()*/
-      if (isStretch) {
-        // Если лепнина: поворачиваем и тянем
-        const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
-        const translates = [
-          [0, 0],
-          [frameW, 0],
-          [frameW, frameH],
-          [0, frameH],
-        ]
-        const len = index % 2 === 0 ? frameW : frameH
-        ctx.translate(...translates[index])
-        ctx.rotate(angles[index])
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, len, s)
-      } else {
-        /* const ctx = canvas.getContext('2d')
-
-        // Если дерево: твой привычный метод заливки
-        ctx.fillRect(0, 0, frameW, frameH)*/
-        const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
-        const translates = [
-          [0, 0],
-          [frameW, 0],
-          [frameW, frameH],
-          [0, frameH],
-        ]
-        const len = index % 2 === 0 ? frameW : frameH
-        ctx.translate(...translates[index])
-        ctx.rotate(angles[index])
-
-        ctx.fillRect(0, 0, len, s)
-        ctx.fillRect(0, 0, len + 1, s)
-      }
-      ctx.restore()
-    })
-
-    // 1. Создаем объект для внутреннего фото
-    const photo = new Image()
-    photo.src = photoUrl // Замените на нужный URL
-    photo.onload = () => {
-      // 2. Рисуем фото строго в границах внутреннего проема
-      /*ctx.drawImage(photo, s, s, frameW - 2 * s, frameH - 2 * s)*/
-      /*ctx.drawImage(photo, s - 10, s - 10, frameW - 2 * s + 20, frameH - 2 * s + 20)*/
-      ctx.drawImage(
-        photo,
-        0,
-        0,
-        photo.width,
-        photo.height,
-        s - 13,
-        s - 13,
-        frameW - 2 * s + 26,
-        frameH - 2 * s + 26,
-      )
-      const g = ctx.createLinearGradient(s, s, frameW, frameH)
-      g.addColorStop(0, 'rgba(255,255,255,0.9)')
-      g.addColorStop(0.5, 'rgba(255,255,255,0)')
-      g.addColorStop(1, 'rgba(255,255,255,0.1)')
-      ctx.fillStyle = g
-      ctx.fillRect(s - 13, s - 13, frameW - 2 * s + 26, frameH - 2 * s + 26)
-
-      // Финальный штрих: внутренняя тень строго внутри проема
-      ctx.save()
-      ctx.beginPath()
-      ctx.rect(s, s, frameW - 2 * s, frameH - 2 * s) // Ограничиваем область "окном"
-      ctx.clip()
-
-      ctx.shadowBlur = 15
-      ctx.shadowColor = 'rgba(0,0,0,0.7)'
-      /* ctx.strokeRect(s, s, frameW - 2 * s, frameH - 2 * s) // Тень ляжет только внутрь*/
-      ctx.strokeRect(s - 13, s - 13, frameW - 2 * s + 26, frameH - 2 * s + 26).ctx.restore()
+  bus.on('update-favorites', (updatedProduct) => {
+    const product = products.value.find((p) => p.id === updatedProduct.id)
+    if (product) {
+      product.is_liked = updatedProduct.is_liked
     }
-    /*  незабыть сделать функционал по условию if можно через кнопку создать двойную раму в конструкторе    и в польшекгда начнем прдавать  програмист чтобы зашифровал код и  и сделал эффеекты как у обложки vogue     */
-  }
-}
+  })
+  // 2. Рисуем на каждом канвасе после того, как Vue их создаст
+  setTimeout(() => {
+    data.forEach((p) =>
+      drawFullFrame(
+        `canvas-${p.id}`,
+        p.frame_url,
+        205,
+        p.image_url,
+        300,
+        50,
+        p.is_stretch,
+        p.colorName,
+      ),
+    )
+  }, 100)
+})
 
 const loadAndDraw = async (fileName) => {
   const { data } = supabase.storage.from('products').getPublicUrl('baget3.jpg')
@@ -169,200 +71,270 @@ const loadAndDraw = async (fileName) => {
   // Вызываем твою функцию отрисовки, передавая полученный URL
   drawFullFrame('canvasId1', data.publicUrl, 800, data.publicUrl, 600, 50, false)
 }
-/*
-onMounted(() => {
-  drawFullFrame(
-    'testCanvas',
-    '/public/images/baget3.jpg',
-    200,
-    '/public/images/new-photo1.png',
-    270,
-    50,
-    false,
-  )
-})*/
-const isVisible = ref(true)
-/*
-const products = ref([
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    discount: 'скидка',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [
-      {
-        text: 'новинка',
-        class: 'product-prop product__prop new',
-        text: 'скидка',
-        class: 'product__prop2 sales',
-      },
-    ],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    discount: 'скидка',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [
-      {
-        text: 'Хит продаж',
-        class: 'product-prop product__prop best',
-        text: 'скидка',
-        class: 'product__prop2 sales',
-      },
-    ],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [{ text: 'Хит продаж', class: 'product-prop product__prop best' }],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [{ text: 'новинка', class: 'product-prop product__prop new' }],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
-  {
-    id: 1,
-    title: 'Eyes Mesh Boat Shoes',
-    price: '$220.00',
-    imgDefault: '/images/works22 (1) (2) (3).png',
-    imgHover: 'images/pictures.2 (1).png',
-    currentImg: '/images/works22 (1) (2) (3).png',
-    // Массив меток: у кого-то их 3, у кого-то 0
-    tags: [],
-  },
 
-  // ... другие товары
-])*/
+const selectItem2 = async (text) => {
+  selectedText.value = text
+  iscustomopen.value = false
+
+  let query = supabase.from('products').select('*')
+
+  if (text === 'Сначала дешевые') {
+    // Сначала дешевые (от низких к высоким)
+    query = query.order('price', { ascending: true })
+  } else if (text === 'Сначала новые') {
+    // По ID (созданные последними будут сверху, если ID автоинкремент)
+    query = query.order('id', { ascending: false })
+  } else if (text === 'По умолчанию') {
+    // По ID (созданные последними будут сверху, если ID автоинкремент)
+    query = query.order('id', { ascending: true })
+  } else if (text === 'Сначала дорогие') {
+    query = query.order('price', { ascending: false })
+  }
+
+  const { data, error } = await query
+  if (!error) {
+    products.value = data // Vue обновил порядок карточек на экране
+
+    // Ждем 100мс, пока Vue создаст новые HTML-узлы, и рисуем в них
+    setTimeout(() => {
+      products.value.forEach((p) =>
+        drawFullFrame(`canvas-${p.id}`, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch),
+      )
+    }, 100)
+  }
+}
+// Функция для переключения лайка и сохранения в базу
+/*
+const toggleLike = async (product) => {
+  // 1. Меняем локально (мгновенный эффект для пользователя)
+  product.is_liked = !product.is_liked
+  product.color_name = selectedColor.value // сохраняем текущий цвет в объект товара
+  await supabase.from('products').update({ is_liked: product.is_liked }).eq('id', product.id)
+
+  bus.emit('update-favorites', product)
+  if (product.is_liked) {
+    // Ждем обновления DOM и рисуем раму
+    nextTick(() => {
+      drawFullFrame(
+        `canvas-fav-${product.id}`,
+        product.textureUrl,
+        150,
+        product.photoUrl,
+        200,
+        20,
+        product.isStretch,
+        product.colorName,
+      )
+    })
+  }
+
+  // 2. Сохраняем в Supabase
+  const { error } = await supabase
+    .from('products')
+    .update({ is_liked: product.is_liked })
+    .eq('id', product.id)
+
+  if (error) {
+    console.error('Ошибка при сохранении лайка:', error.message)
+    // Если ошибка, возвращаем как было (опционально)
+    product.is_liked = !product.is_liked
+  }
+  if (product.is_liked) {
+    bus.emit('draw-frame', product) // Отправляем данные товара напрямую в хедер
+  }
+}*/
+const toggleLike = async (product) => {
+  // 1. Меняем локально (мгновенный эффект для пользователя)
+  product.is_liked = !product.is_liked
+
+  // Зануление: если лайк убран, записываем null, иначе — выбранный цвет
+  product.selected_color = product.is_liked ? selectedColor.value : null
+  product.color_name = product.selected_color
+
+  bus.emit('update-favorites', product)
+
+  if (product.is_liked) {
+    // Ждем обновления DOM и рисуем раму
+    nextTick(() => {
+      drawFullFrame(
+        `canvas-fav-${product.id}`,
+        product.textureUrl,
+        150,
+        product.photoUrl,
+        200,
+        20,
+        product.isStretch,
+        product.color_name,
+      )
+    })
+    /* bus.emit('draw-frame', product) // Отправляем данные товара напрямую в хедер*/
+  }
+
+  // 2. Сохраняем в Supabase (лайк и зануление/запись цвета одним запросом)
+  const { error } = await supabase
+    .from('products')
+    .update({
+      is_liked: product.is_liked,
+      selected_color: product.selected_color,
+    })
+    .eq('id', product.id)
+
+  if (error) {
+    console.error('Ошибка при сохранении лайка:', error.message)
+    // Откат изменений при ошибке
+    product.is_liked = !product.is_liked
+    product.selected_color = product.is_liked ? selectedColor.value : null
+    product.color_name = product.selected_color
+    bus.emit('update-favorites', product)
+  }
+}
+const selectedCategory = ref('all') // Переменная для хранения активного фильтра
+
+const fetchProducts = async () => {
+  let query = supabase.from('products').select('*')
+  // Если нажали на ту же категорию, что уже выбрана — переключаем на 'all'
+
+  // Если НЕ "все категории", добавляем фильтрацию
+  if (selectedCategory.value !== 'all') {
+    if (selectedCategory.value === 'new') query = query.eq('new_label', 'Новинка')
+    else if (selectedCategory.value === 'hit') query = query.eq('bestseller_label', 'Хит')
+    // Фильтры по скидкам из колонки second_discount_label
+    else if (selectedCategory.value === 'sale_70') query = query.gte('second_discount_label', 70)
+    else if (selectedCategory.value === 'sale_50') query = query.eq('second_discount_label', '50')
+    else if (selectedCategory.value === 'sale_40')
+      query = query.lte('second_discount_label', 40).gte('second_discount_label', 16)
+    else if (selectedCategory.value === 'sale_15') query = query.eq('second_discount_label', '15')
+    else query = query.eq('category', selectedCategory.value)
+  }
+
+  const { data, error } = await query.order('id', { ascending: true })
+  if (!error && data) {
+    products.value = data
+
+    await nextTick()
+
+    // Добавляем микро-задержку, чтобы Vue успел не просто создать тег,
+    // а полностью вставить его в дерево отрисовки браузера
+    setTimeout(() => {
+      data.forEach((product) => {
+        const canvasId = `canvas-${product.id}`
+        const canvas = document.getElementById(canvasId)
+
+        if (canvas) {
+          drawFullFrame(
+            canvasId,
+            product.frame_url,
+            205,
+            product.image_url,
+            300,
+            50,
+            product.is_stretch,
+          )
+        } else {
+          console.warn(`Канвас ${canvasId} не найден в DOM`)
+        }
+      })
+    }, 100) // 100 миллисекунд обычно достаточно
+  }
+}
+
+// 3. ОТДЕЛЬНАЯ функция для кнопок (убедись, что она не внутри fetchProducts)
+const filterByCategory = (key) => {
+  // Логика: если жмем на ту же кнопку — сбрасываем, если на новую — выбираем её
+  selectedCategory.value = selectedCategory.value === key && key !== 'all' ? 'all' : key
+  fetchProducts()
+}
+
+// 1. Просто следим за "блокнотом"
+watch(selectedCategory, () => {
+  // Как только в блокноте что-то поменялось — сразу бежим в базу
+  fetchProducts()
+})
+
+onMounted(() => {
+  filterByCategory('all')
+})
+const selectedColor = ref('')
+
+const changeColor = (name) => {
+  if (selectedColor.value === name) {
+    selectedColor.value = ''
+    name = undefined
+  } else {
+    selectedColor.value = name
+  }
+  products.value.forEach((p) => {
+    drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, name)
+  })
+}
+/*
+const changeColor = (name, currentProduct) => {
+  const isReset = selectedColor.value === name
+  selectedColor.value = isReset ? '' : name
+  const paintCost = Number(currentProduct?.paint_price) || 0
+
+  products.value.forEach((p) => {
+    // Если цвет отменили — вычитаем стоимость покраски, если выбрали новый — прибавляем
+    p.price = isReset ? p.price - paintCost : p.price + paintCost
+    drawFullFrame(
+      'canvas-' + p.id,
+      p.frame_url,
+      205,
+      p.image_url,
+      300,
+      50,
+      p.is_stretch,
+      selectedColor.value || undefined,
+    )
+  })
+}
+*/
+/*
+const changeColor = (name, currentProduct) => {
+  const paintCost = Number(currentProduct?.paint_price) || 0
+
+  if (selectedColor.value === name) {
+    selectedColor.value = ''
+    // Сбрасываем к базовой цене и убираем цвет со всех canvas
+    products.value.forEach((p) => {
+      if (p.base_price !== undefined) {
+        p.price = p.base_price
+      }
+      drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, '')
+    })
+  } else {
+    selectedColor.value = name
+    // Сохраняем исходную цену ОДИН раз и прибавляем стоимость покраски
+    products.value.forEach((p) => {
+      if (p.base_price === undefined) {
+        p.base_price = p.price
+      }
+      p.price = p.base_price + paintCost
+      drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, name)
+    })
+  }
+}*/ /*
+const changeColor = (name) => {
+  selectedColor.value = selectedColor.value === name ? '' : name
+
+  products.value.forEach((p) => {
+    drawFullFrame(
+      'canvas-' + p.id,
+      p.frame_url,
+      205,
+      p.image_url,
+      300,
+      50,
+      p.is_stretch,
+      selectedColor.value || undefined,
+    )
+  })
+}*/
+
+// 1. Умная переменная для списка избранного
+const likedProducts = computed(() => {
+  return products.value.filter((product) => product.is_liked)
+})
 </script>
 
 <template>
@@ -392,13 +364,23 @@ const products = ref([
                   <ul class="catalog-filter__items">
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="all categories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'all'"
+                          @click="filterByCategory('all')"
+                        />
                         <span class="custom__checkbox-text">все категории</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="Accessories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'photo_messy'"
+                          @click="filterByCategory('photo_messy')"
+                        />
                         <span class="custom__checkbox-text"> фооторамки: </span>
                       </label>
                     </li>
@@ -410,7 +392,12 @@ const products = ref([
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="coats">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'photo_frames'"
+                          @click="filterByCategory('photo_frames')"
+                        />
                         <span class="custom__checkbox-text"> беспорядочные</span>
                       </label>
                     </li>
@@ -420,10 +407,105 @@ const products = ref([
                         <span class="custom__checkbox-text">деревянные</span>
                       </label>
                     </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"> Все Зеркала</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"> Зеркала круглые </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">Зеркала овальные зеркала</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"
+                          >Зеркала прямоугольные и квадратные</span
+                        >
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"> Зеркала для ванной</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">Зеркала для прихожей и гардероба</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">Зеркала для гостиной</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">Зеркала настенные </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">
+                          Зеркала напольные (в полный рост)
+                        </span>
+                      </label>
+                    </li>
+
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"> Зеркала в классическом багете </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">
+                          Зеркала в современном алюминиевом профиле
+                        </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text"> Зеркала в деревянной раме </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">
+                          Зеркала с фронтальной LED-подсветкой
+                        </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
+                        <span class="custom__checkbox-text">
+                          Зеркала с интерьерной (парящей) подсветкой
+                        </span>
+                      </label>
+                    </li>
                     <li class="catalog__filter-item"></li>
                     <label class="custom__checkbox" data-text="clothes">
                       <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                      <span class="custom__checkbox-text">уголки</span>
+                      <span class="custom__checkbox-text">Рамы для вышивки биссером</span>
                     </label>
 
                     <li class="catalog__filter-item">
@@ -435,25 +517,25 @@ const products = ref([
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="all categories">
                         <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">бестселлеры</span>
+                        <span class="custom__checkbox-text">хит продаж</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="summer">
                         <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">фильмы и сериалы</span>
+                        <span class="custom__checkbox-text">Оформление икон</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="jacket">
                         <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">паспорту</span>
+                        <span class="custom__checkbox-text">Рамы для зеркал в ванную </span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="short">
                         <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">стекла</span>
+                        <span class="custom__checkbox-text">Лофт-багет для офиса</span>
                       </label>
                     </li>
                   </ul>
@@ -479,62 +561,310 @@ const products = ref([
                   <ul class="catalog-filter__items">
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="all categories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">all categories</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Черный матовый'"
+                          @click="changeColor('Черный матовый', product)"
+                        />
+                        <span class="custom__checkbox-text">Черный матовый</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="Accessories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">Accessories</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Белый'"
+                          @click="changeColor('Белый', product)"
+                        />
+                        <span class="custom__checkbox-text">Белый</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="dresses">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">dresses</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Золотой антик'"
+                          @click="changeColor('Золотой антик')"
+                        />
+                        <span class="custom__checkbox-text">Золотой антик </span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="dresses">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'желтый'"
+                          @click="changeColor('желтый')"
+                        />
+                        <span class="custom__checkbox-text">желтый </span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="coats">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">coats</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Светлый дуб'"
+                          @click="changeColor('Светлый дуб')"
+                        />
+                        <span class="custom__checkbox-text">Светлый дуб</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="clothes">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">clothes</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Венге'"
+                          @click="changeColor('Венге')"
+                        />
+                        <span class="custom__checkbox-text">Венге</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="t-shirt">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">t-shirt</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'синий'"
+                          @click="changeColor('синий')"
+                        />
+                        <span class="custom__checkbox-text">синий</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="t-shirt">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Серебряный'"
+                          @click="changeColor('Серебряный')"
+                        />
+                        <span class="custom__checkbox-text">Серебряный</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="all categories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">all categories</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Графит'"
+                          @click="changeColor('Графит')"
+                        />
+                        <span class="custom__checkbox-text">Графит</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="all categories">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'зеленый'"
+                          @click="changeColor('зеленый')"
+                        />
+                        <span class="custom__checkbox-text">зеленый</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="summer">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">summer</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Слоновая кость'"
+                          @click="changeColor('Слоновая кость')"
+                        />
+                        <span class="custom__checkbox-text"> Слоновая кость </span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="jacket">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">jacket</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Бордовый с позолотой'"
+                          @click="changeColor('Бордовый с позолотой')"
+                        />
+                        <span class="custom__checkbox-text">Бордовый с позолотой</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="short">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">short</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Шалфейный'"
+                          @click="changeColor('Шалфейный')"
+                        />
+                        <span class="custom__checkbox-text">Шалфейный</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'красный'"
+                          @click="changeColor('красный')"
+                        />
+                        <span class="custom__checkbox-text">красный</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Медный'"
+                          @click="changeColor('Медный')"
+                        />
+                        <span class="custom__checkbox-text">Медный</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Антрацит'"
+                          @click="changeColor('Антрацит')"
+                        />
+                        <span class="custom__checkbox-text">Антрацит</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'фиолетовый'"
+                          @click="changeColor('фиолетовый')"
+                        />
+                        <span class="custom__checkbox-text">фиолетовый</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Темный орех'"
+                          @click="changeColor('Темный орех')"
+                        />
+                        <span class="custom__checkbox-text">Темный орех</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Бежевый песок'"
+                          @click="changeColor('Бежевый песок')"
+                        />
+                        <span class="custom__checkbox-text">Бежевый песок</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Темно-синий (Нави)'"
+                          @click="changeColor('Темно-синий (Нави)')"
+                        />
+                        <span class="custom__checkbox-text">Темно-синий (Нави)</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Шампань'"
+                          @click="changeColor('Шампань')"
+                        />
+                        <span class="custom__checkbox-text">Шампань</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'коричневый'"
+                          @click="changeColor('коричневый')"
+                        />
+                        <span class="custom__checkbox-text">коричневый</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Оливковый'"
+                          @click="changeColor('Оливковый')"
+                        />
+                        <span class="custom__checkbox-text">Оливковый</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Сталь (Сатин)'"
+                          @click="changeColor('Сталь (Сатин)')"
+                        />
+                        <span class="custom__checkbox-text">Сталь (Сатин)</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'розовый'"
+                          @click="changeColor('розовый')"
+                        />
+                        <span class="custom__checkbox-text">розовый</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Терракотовый'"
+                          @click="changeColor('Терракотовый')"
+                        />
+                        <span class="custom__checkbox-text">Терракотовый</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'Пыльная роза'"
+                          @click="changeColor('Пыльная роза')"
+                        />
+                        <span class="custom__checkbox-text">Пыльная роза</span>
+                      </label>
+                    </li>
+                    <li class="catalog__filter-item">
+                      <label class="custom__checkbox" data-text="short">
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedColor === 'оранджевый'"
+                          @click="changeColor('оранджевый')"
+                        />
+                        <span class="custom__checkbox-text">оранджевый</span>
                       </label>
                     </li>
                   </ul>
@@ -641,26 +971,46 @@ const products = ref([
                   <ul class="catalog-filter__items catalog-filter--columns">
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="Accessories">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">70% и выше</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'sale_70'"
+                          @click="filterByCategory('sale_70')"
+                        />
+                        <span class="custom__checkbox-text">Скидка 70% и выше</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="dresses">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">Скидка 60%-70%</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'sale_50'"
+                          @click="filterByCategory('sale_50')"
+                        />
+                        <span class="custom__checkbox-text">Скидка 50%</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="coats">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">Скидка 40%-60%</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'sale_40'"
+                          @click="filterByCategory('sale_40')"
+                        />
+                        <span class="custom__checkbox-text">Скидка менее 40%</span>
                       </label>
                     </li>
                     <li class="catalog__filter-item">
                       <label class="custom__checkbox" data-text="clothes">
-                        <input type="checkbox" class="custom__checkbox-input visual-hidden" />
-                        <span class="custom__checkbox-text">скидка менее 40%</span>
+                        <input
+                          type="checkbox"
+                          class="custom__checkbox-input visual-hidden"
+                          :checked="selectedCategory === 'sale_15'"
+                          @click="filterByCategory('sale_15')"
+                        />
+                        <span class="custom__checkbox-text">скидка 15%</span>
                       </label>
                     </li>
                   </ul>
@@ -712,18 +1062,18 @@ const products = ref([
                     </div>
                     <div class="custom-select__dropdown" :class="{ 'custom-select': iscustomopen }">
                       <ul class="custom-select__list">
-                        <li
-                          class="custom-select__item"
-                          @click="selectItem('сортировать по последним')"
-                        >
-                          сортировать по последним
+                        <li class="custom-select__item" @click="selectItem2('Сначала новые')">
+                          Сначала новые
                         </li>
-                        <li class="custom-select__item" @click="selectItem('сортировать по цене')">
-                          сортировать по цене
+                        <li class="custom-select__item" @click="selectItem2('Сначала дешевые')">
+                          Сначала дешевые
+                        </li>
+                        <li class="custom-select__item" @click="selectItem2('Сначала дорогие')">
+                          Сначала дорогие
                         </li>
 
-                        <li class="custom-select__item" @click="selectItem('сортировать по новым')">
-                          сортировать по новым
+                        <li class="custom-select__item" @click="selectItem2('По умолчанию')">
+                          По умолчанию
                         </li>
                       </ul>
                     </div>
@@ -767,19 +1117,30 @@ const products = ref([
                 <button class="btn-reset catalog-choice__clear">clear all</button>
               </div>
 
-              <canvas id="testCanvas"></canvas>
-
               <ul class="catalog-grid__content" :data-grid-colums="selectedCount">
                 <li v-for="product in products" :key="product.id" class="catalog__grid-item">
                   <article class="product">
                     <!-- router-link теперь и есть блок с картинкой -->
-                    <router-link :to="product.link" class="product__image">
+                    <router-link :key="product.id" :to="product.link" class="product__image">
                       <canvas :id="'canvas-' + product.id">
                         /*:src="product.currentImg"*/ @mouseover="product.currentImg =
                         product.imgHover" @mouseleave="product.currentImg = product.imgDefault"
                         alt="product-1"
                       </canvas>
+                      <button
+                        class="heart-btn2"
+                        :class="{ 'is-active': product.is_liked }"
+                        @click.prevent="toggleLike(product)"
+                      >
+                        <svg viewBox="0 0 24 24" width="30" height="30">
+                          <path
+                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                          />
+                        </svg>
+                      </button>
                     </router-link>
+                    <!-- Кнопка-сердечко (ДОБАВЛЕНО) -->
+
                     <span v-if="product.discount" class="product__sale">
                       {{ product.discount }}
                     </span>
@@ -787,13 +1148,45 @@ const products = ref([
                     <span v-for="(tag, index) in product.tags" :key="index" :class="tag.class">
                       {{ tag.text }}
                     </span>
+                    <!-- Вторая скидка (новая колонка) -->
+                    <span v-if="product.second_discount_label" class="product__sale">
+                      -{{ product.second_discount_label }}%
+                    </span>
+
+                    <div
+                      class="product__props-container"
+                      style="display: flex; flex-direction: column; gap: 3px; margin-left: 15px"
+                    >
+                      <span v-if="product.discount_label" class="product__prop2 sales">{{
+                        product.discount_label
+                      }}</span>
+
+                      <span v-if="product.new_label" class="product-prop product__prop new">{{
+                        product.new_label
+                      }}</span>
+                      <span
+                        v-if="product.bestseller_label"
+                        class="product-prop product__prop best"
+                        >{{ product.bestseller_label }}</span
+                      >
+                    </div>
 
                     <h3 class="product__title">
                       <router-link :to="product.link" class="catalog_link_color">{{
                         product.title
                       }}</router-link>
                     </h3>
-                    <span class="product__price">{{ product.price }}</span>
+                    <div class="prices">
+                      <span class="product__price">
+                        BYN
+                        {{
+                          selectedColor ? product.price + (product.paint_price || 0) : product.price
+                        }}</span
+                      >
+                      <span v-if="product.old_price" class="product__oldprice">
+                        BYN {{ product.old_price }}</span
+                      >
+                    </div>
                   </article>
                 </li>
               </ul>
@@ -823,6 +1216,10 @@ const products = ref([
 </template>
 
 <style>
+.product__props-container {
+  display: flex;
+  gap: 2px;
+}
 /*.container4 {
   max-width: 1406px;
   padding: 0 40px;
@@ -844,15 +1241,37 @@ const products = ref([
   margin-right: 30px;
 }*/
 /*catalog***************/
-.product {
+.product2 {
   position: relative;
 }
+
+.heart-btn2 {
+  position: absolute;
+  bottom: 45px;
+  right: 40px;
+
+  background: none;
+  border: none;
+  cursor: pointer;
+  fill: rgba(255, 255, 255, 0.7);
+  transition: fill 0.3s;
+}
+.heart-btn2.is-active svg {
+  fill: red;
+  stroke: red;
+}
+
+/* Контейнер для плашек */
+
 .product__image {
+  position: relative;
   display: block;
   overflow: hidden;
   position: relative;
   max-height: 100%;
   object-fit: cover;
+  width: fit-content;
+  height: min-content;
 }
 
 .product__image span {
@@ -861,20 +1280,20 @@ const products = ref([
 
 .product__sale {
   position: absolute;
-  left: 20px;
-  top: 20px;
-  border: 2px solid #151515;
+  left: 45px;
+  top: 50px;
+  /*border: 2px solid #151515;*/
 
-  color: #111;
+  /*color: #111;*/
 
-  text-transform: uppercase;
+  /* text-transform: uppercase;*/
   background: #ff4d4d;
   color: white;
   padding: 4px 8px;
   border-radius: 4px;
   font-weight: bold;
-  font-size: 12px;
-  z-index: 10;
+  font-size: 14px;
+  z-index: 1;
 }
 .catalog_link_color {
   color: #000;
@@ -885,7 +1304,6 @@ const products = ref([
 
 .product__prop2 {
   display: inline-block;
-  margin-bottom: 10px;
   font-weight: 700;
   font-size: 10px;
   text-transform: uppercase;
@@ -924,7 +1342,7 @@ const products = ref([
   font-family: sans-serif;
   font-size: 13px;
   margin: 0;
-  margin-bottom: 8px;
+  margin-left: 15px;
 }
 .product__price {
   width: 55px;
@@ -932,6 +1350,7 @@ const products = ref([
   color: #151515;
   font-weight: 700;
   font-size: 13px;
+  margin-left: 15px;
 }
 .catalog {
   padding-top: 220px; /* или другое значение, чтобы «отлепить» от верха */
@@ -1258,6 +1677,7 @@ const products = ref([
 .catalog__grid-item {
   /*padding-bottom: 16px;*/
   margin-bottom: 79px;
+  margin-left: -10px; /*изменил*/
 }
 
 [data-grid-colums='3'] .catalog__grid-item {

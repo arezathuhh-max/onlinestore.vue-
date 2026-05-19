@@ -1,11 +1,196 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, onUnmounted, nextTick, watch, ref, computed } from 'vue'
+import { bus } from '../views/bus.js'
+import { drawFullFrame } from '../utils.js'
+
+import { createClient } from '@supabase/supabase-js'
+const supabase = createClient(
+  'https://aqfposmbxcqbpumvydhb.supabase.co',
+  'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
+)
+const favorites = ref([])
 
 const activeBlock = ref(null) // Хранит 'heart', 'cart' или null
 
 const toggle = (name) => {
   activeBlock.value = activeBlock.value === name ? null : name
 }
+
+const props = defineProps(['products'])
+
+const likedProducts = computed(() => (props.products || []).filter((p) => p.is_liked))
+/*
+onMounted(() => {
+  // 1. Быстрая фоновая загрузка без блокировки
+  const loadStored = async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_liked', true)
+      .order('updated_at', { ascending: true })
+    if (data) {
+      favorites.value = data
+      // Рисуем с большой задержкой, чтобы не мешать каталогу
+      setTimeout(() => {
+        data.forEach((p) =>
+          drawFullFrame(
+            `canvas-fav-${p.id}`,
+            p.frame_url,
+            120,
+            p.image_url,
+            120,
+            40,
+            p.is_stretch,
+            p.selected_color,
+          ),
+        )
+      }, 800)
+    }
+  }
+  loadStored()
+
+  // 2. Слушатель кликов (всегда активен)
+  bus.on('update-favorites', (updatedProduct) => {
+    const index = favorites.value.findIndex((p) => p.id === updatedProduct.id)
+    if (updatedProduct.is_liked) {
+      if (index === -1) {
+        favorites.value.push(updatedProduct)
+        nextTick(() =>
+          setTimeout(() => {
+            drawFullFrame(
+              `canvas-fav-${updatedProduct.id}`,
+              updatedProduct.frame_url,
+              120,
+              updatedProduct.image_url,
+              120,
+              40,
+              updatedProduct.is_stretch,
+              updatedProduct.color_name,
+            )
+          }, 100),
+        )
+      } else {
+        // Вычисляем новую цену
+        if (favorites.is_liked) {
+          favorites.value[index].price =
+            favorites.value[index].price + favorites.value[index].paint_price
+        } else if (!favorites.is_liked) {
+          favorites.value[index].price = favorites.value[index].price
+        }
+      }
+    } else if (index !== -1) {
+      favorites.value.splice(index, 1)
+    }
+  })
+})*/
+
+onMounted(() => {
+  const loadStored = async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_liked', true)
+      .order('updated_at', { ascending: true })
+    if (data) {
+      // При загрузке сразу считаем цену с учетом цвета
+      favorites.value = data.map((p) => ({
+        ...p,
+        base_price: p.price, // Сохраняем базовую цену
+        price: p.selected_color
+          ? (p.base_price || p.price) + (p.paint_price || 0)
+          : p.base_price || p.price,
+      }))
+
+      setTimeout(() => {
+        favorites.value.forEach((p) =>
+          drawFullFrame(
+            `canvas-fav-${p.id}`,
+            p.frame_url,
+            120,
+            p.image_url,
+            120,
+            40,
+            p.is_stretch,
+            p.selected_color,
+          ),
+        )
+      }, 800)
+    }
+  }
+  loadStored()
+
+  bus.on('update-favorites', (updatedProduct) => {
+    const index = favorites.value.findIndex((p) => p.id === updatedProduct.id)
+
+    if (updatedProduct.is_liked) {
+      // Гарантируем наличие базовой цены для расчетов
+      const basePrice = updatedProduct.base_price || updatedProduct.price
+      const paintPrice = updatedProduct.paint_price || 0
+
+      // Вычисляем финальную цену: если цвет выбран, плюсуем покраску
+      const finalPrice =
+        updatedProduct.color_name || updatedProduct.selected_color
+          ? basePrice + paintPrice
+          : basePrice
+
+      const productToSave = {
+        ...updatedProduct,
+        base_price: basePrice,
+        price: finalPrice,
+      }
+
+      if (index === -1) {
+        favorites.value.push(productToSave)
+        nextTick(() =>
+          setTimeout(() => {
+            drawFullFrame(
+              `canvas-fav-${updatedProduct.id}`,
+              updatedProduct.frame_url,
+              120,
+              updatedProduct.image_url,
+              120,
+              40,
+              updatedProduct.is_stretch,
+              updatedProduct.color_name || updatedProduct.selected_color,
+            )
+          }, 100),
+        )
+      } else {
+        favorites.value[index] = productToSave
+      }
+    } else if (index !== -1) {
+      favorites.value.splice(index, 1)
+    }
+  })
+})
+const toggleLike = async (product) => {
+  product.is_liked = false
+  product.selected_color = null // Очищаем цвет локально
+  product.color_name = null
+
+  // Сохраняем в Supabase: отключаем лайк и обнуляем цвет, чтобы он не стирался некорректно
+  await supabase
+    .from('products')
+    .update({
+      is_liked: false,
+      selected_color: null,
+    })
+    .eq('id', product.id)
+
+  favorites.value = favorites.value.filter((p) => p.id !== product.id)
+  bus.emit('update-favorites', product)
+}
+/*
+const changeColorInHeader = (name) => {
+  favorites.value.forEach((p) => {
+    // Если цвет уже такой же — сбрасываем, иначе ставим новый
+    p.color_name = p.color_name === name ? null : name
+    const currentPaintPrice = p.paint_price || 50
+    // Если цвет есть — прибавляем цену покраски, если сбросили — оставляем базовую
+    p.price = p.color_name ? p.base_price + currentPaintPrice : p.base_price
+  })
+}
+  */
 </script>
 
 <template>
@@ -241,92 +426,50 @@ const toggle = (name) => {
             <div class="purchase_top">
               <h2 class="heart_title">Избранное</h2>
               <div class="purchase_products">
-                <article class="product2">
-                  <span class="product_sale2">20%</span>
-                  <router-link to="/favorites">
+                <!-- Цикл v-for по массиву лайкнутых товаров -->
+                <article v-for="product in favorites" :key="product.id" class="product2">
+                  <!-- Скидка из БД -->
+                  <span v-if="product.discount" class="product_sale2">{{ product.discount }}</span>
+
+                  <router-link :to="'/product/' + product.id">
                     <div class="product_image2">
-                      <img src="/images/sadas.png" alt="" />
+                      <!-- Тот самый канвас для отрисовки рамы -->
+                      <canvas :id="'canvas-fav-' + product.id"></canvas>
                     </div>
                   </router-link>
+
                   <div class="purchase_prices">
                     <div class="purchase_prices_top">
                       <h3 class="product_title2">
-                        <router-link to="/favorites"> Eyes Mesh Boat Shoes</router-link>
+                        <!-- Название из БД -->
+                        <router-link :to="product.link">{{ product.title }}</router-link>
                       </h3>
                     </div>
                     <div class="purchase_prices_bottom">
-                      <span class="product_price2">$220.00</span>
-                      <span class="product_oldprice2">$210.00</span>
-                      <span class="purchase_size">21x30см</span>
+                      <!-- Цены и размер из БД -->
+                      <span class="product_price2">BYN {{ product.price }}</span>
+                      <span v-if="product.old_price" class="product_oldprice2"
+                        >BYN {{ product.old_price }}</span
+                      >
+                      <span class="purchase_size">{{ product.selectedSize || '21x30см' }}</span>
                     </div>
-                    <router-link to="/favorites">
-                      <span class="purchase_toggle2heart">
-                        <div class="icon_heart">
-                          <svg
-                            class="icon_heart2"
-                            aria-hidden="true"
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="34"
-                            height="34"
-                            fill="red"
-                            color="black"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke="currentColor"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M12.01 6.001C6.5 1 1 8 5.782 13.001L12.011 20l6.23-7C23 8 17.5 1 12.01 6.002Z"
-                            />
-                          </svg>
-                        </div>
-                      </span>
-                    </router-link>
-                  </div>
-                </article>
-                <article class="product2">
-                  <span class="product_sale2">20%</span>
-                  <router-link to="/favorites">
-                    <div class="product_image2">
-                      <img src="/images/sadas.png" alt="" />
-                    </div>
-                  </router-link>
-                  <div class="purchase_prices">
-                    <div class="purchase_prices_top">
-                      <h3 class="product_title2">
-                        <router-link to="/favorites"> Eyes Mesh Boat Shoes</router-link>
-                      </h3>
-                    </div>
-                    <div class="purchase_prices_bottom">
-                      <span class="product_price2">$220.00</span>
-                      <span class="product_oldprice2">$210.00</span>
-                      <span class="purchase_size">21x30см</span>
-                    </div>
-                    <router-link to="/favorites">
-                      <span class="purchase_toggle2heart">
-                        <div class="icon_heart">
-                          <svg
-                            class="icon_heart2"
-                            aria-hidden="true"
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="34"
-                            height="34"
-                            fill="red"
-                            color="black"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke="currentColor"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M12.01 6.001C6.5 1 1 8 5.782 13.001L12.011 20l6.23-7C23 8 17.5 1 12.01 6.002Z"
-                            />
-                          </svg>
-                        </div>
-                      </span>
-                    </router-link>
+
+                    <!-- Кнопка удаления (дизлайк) -->
+                    <span class="purchase_toggle2heart" @click.prevent="toggleLike(product)">
+                      <div class="icon_heart">
+                        <svg
+                          class="icon_heart2 icon_heart2--active"
+                          viewBox="0 0 24 24"
+                          width="24"
+                          height="24"
+                          fill="red"
+                        >
+                          <path
+                            d="M12.01 6.001C6.5 1 1 8 5.782 13.001L12.011 20l6.23-7C23 8 17.5 1 12.01 6.002Z"
+                          />
+                        </svg>
+                      </div>
+                    </span>
                   </div>
                 </article>
               </div>
@@ -376,6 +519,7 @@ const toggle = (name) => {
 .cart_icon {
   cursor: pointer;
 }
+
 .header {
   background-color: #151515;
 }
@@ -500,6 +644,7 @@ const toggle = (name) => {
 
 .purchase_navigation {
   position: relative;
+  z-index: 999;
 }
 .purchase_prices {
   display: flex;
@@ -525,6 +670,11 @@ const toggle = (name) => {
   margin-right: 10px;
   width: 64px;
   height: 89px;
+}
+.product_image2 canvas {
+  width: 100%; /* Занимает всю ширину контейнера */
+  height: auto; /* Высота подстроится автоматически, чтобы не было искажений */
+  display: block; /* Убирает лишние отступы снизу */
 }
 
 .product_sale2 {
@@ -695,7 +845,9 @@ const toggle = (name) => {
   cursor: pointer;
   position: relative;
 }
-
+.purchase--open {
+  z-index: 30px;
+}
 .stepper_input2 {
   border: 1px solid #ccc;
   height: 100%;
@@ -739,13 +891,14 @@ const toggle = (name) => {
   position: absolute;
   left: 0;
   top: 100%;
-  z-index: 20;
+  z-index: 60;
   display: none;
   border-radius: 10px;
 }
 .purchase--open {
   display: block;
 }
+
 /*purchase_bottom*/
 .purchase_totalprise {
   display: flex;
@@ -794,25 +947,21 @@ const toggle = (name) => {
 
 .heart-navigation {
   position: relative;
+  z-index: 999;
 }
+
 .heart {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 360px;
-  height: 346px;
-  background-color: #fff;
-  padding: 10px;
-  /* position: relative; */
-  overflow: auto;
   position: absolute;
-  /* left: 0; */
   right: 0;
   top: 100%;
-  z-index: 20;
-  /* width: 100%; */
-  display: none;
+  width: 360px;
+  background-color: #fff;
+  padding: 10px;
   border-radius: 10px;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 999;
 }
 .heart_title {
   font-size: 16px;
@@ -841,7 +990,11 @@ const toggle = (name) => {
   transition: color 0.3s;
 }
 .heart--open {
-  display: block;
+  /*visibility: visible;
+  overflow: visible;
+  height: 340px;*/
+  opacity: 1;
+  pointer-events: auto;
 }
 .icon_heart {
   /*display: flex;*/
@@ -886,6 +1039,7 @@ const toggle = (name) => {
   overflow: auto;
   scrollbar-color: #fa8128 transparent; /* Оставляем только для Firefox */
   /* scrollbar-width: thin;  <-- УДАЛИТЕ ЭТУ СТРОКУ, она блокирует webkit-стили в Chrome */
+  z-index: 999;
 }
 
 .purchase::-webkit-scrollbar {
@@ -895,6 +1049,11 @@ const toggle = (name) => {
 .purchase::-webkit-scrollbar-thumb {
   background-color: #fa8128;
   border-radius: 5px;
+}
+
+.purchase_products {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 /*CARZINA  */
