@@ -2,15 +2,13 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { createClient } from '@supabase/supabase-js'
 import { drawFullFrame } from '../utils.js'
+import { bus } from './bus.js'
+import { supabase } from '../router/supabase.js'
 const selectedCount = ref(5)
 // 1. Инициализация клиента базы данных
-const supabase = createClient(
-  'https://aqfposmbxcqbpumvydhb.supabase.co',
-  'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
-)
 
 const favoriteProducts = ref([])
-
+/*
 onMounted(async () => {
   const { data, error } = await supabase
     .from('products') // Название вашей таблицы в Supabase
@@ -35,6 +33,64 @@ onMounted(async () => {
   } else if (error) {
     console.error('Ошибка Supabase:', error.message)
   }
+})*/
+
+// Функция лайка/разлайка прямо со страницы избранного
+const toggleLike = async (product) => {
+  product.is_liked = false
+  product.selected_color = null
+
+  await supabase
+    .from('products')
+    .update({ is_liked: false, selected_color: null })
+    .eq('id', product.id)
+
+  favoriteProducts.value = favoriteProducts.value.filter((p) => p.id !== product.id)
+  bus.emit('update-favorites', product)
+}
+onMounted(() => {
+  // Этап 1: Только загрузка и отрисовка при старте страницы
+  const loadStored = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_liked', true)
+      .order('updated_at', { ascending: true })
+    if (!error && data) {
+      favoriteProducts.value = data.map((p) => ({
+        ...p,
+        link: p.link || `/product/${p.id}`, // Если ссылки нет в БД, подставится этот путь
+        base_price: p.base_price || p.price,
+        price: p.selected_color
+          ? (p.base_price || p.price) + (p.paint_price || 0)
+          : p.base_price || p.price,
+      }))
+
+      await nextTick()
+      setTimeout(() => {
+        favoriteProducts.value.forEach((p) => {
+          drawFullFrame(
+            `canvas-${p.id}`,
+            p.frame_url,
+            200,
+            p.image_url,
+            300,
+            50,
+            p.is_stretch,
+            p.selected_color,
+          )
+        })
+      }, 100)
+    }
+  }
+  loadStored()
+  // Добавить этот блок внутрь onMounted в файле favorites.vue:
+  bus.on('update-favorites', (updatedProduct) => {
+    if (!updatedProduct.is_liked) {
+      // Если лайк снят в хедере, мгновенно убираем товар с экрана избранного
+      favoriteProducts.value = favoriteProducts.value.filter((p) => p.id !== updatedProduct.id)
+    }
+  })
 })
 </script>
 
@@ -47,11 +103,7 @@ onMounted(async () => {
     >
       <article class="product3">
         <!-- router-link теперь и есть блок с картинкой -->
-        <router-link
-          :key="favoriteProduct.id"
-          :to="favoriteProduct.link"
-          class="favoriteProduct__image"
-        >
+        <router-link :to="'/product/' + favoriteProduct.id" class="favoriteProduct__image">
           <canvas :id="'canvas-' + favoriteProduct.id">
             /*:src="product.currentImg"*/ @mouseover="product.currentImg = product.imgHover"
             @mouseleave="product.currentImg = product.imgDefault" alt="product-1"
@@ -103,9 +155,11 @@ onMounted(async () => {
         </div>
 
         <h3 class="favoriteProduct__title">
-          <router-link :to="favoriteProduct.link" class="favoriteProduct_catalog_link_color">{{
-            favoriteProduct.title
-          }}</router-link>
+          <router-link
+            :to="'/product/' + favoriteProduct.id"
+            class="favoriteProduct_catalog_link_color"
+            >{{ favoriteProduct.title }}</router-link
+          >
         </h3>
         <div class="prices">
           <span class="favoriteProduct__price">

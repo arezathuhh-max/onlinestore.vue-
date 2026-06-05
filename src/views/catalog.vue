@@ -4,11 +4,8 @@ import { onMounted, computed } from 'vue'
 import { createClient } from '@supabase/supabase-js'
 import { bus } from './bus.js'
 import { drawFullFrame } from '../utils.js'
-
-const supabase = createClient(
-  'https://aqfposmbxcqbpumvydhb.supabase.co',
-  'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
-)
+import { supabase } from '../router/supabase.js'
+import { products } from '@/productsData.js'
 
 // 1. Создаем реактивную переменную (по умолчанию 5)
 const selectedCount = ref(5)
@@ -33,11 +30,13 @@ const selectItem = (text) => {
   selectedText.value = text
   iscustomopen.value = false
 }
-const products = ref([])
+/*const products = ref([])*/
 
 onMounted(async () => {
   // 1. Берем данные из таблицы
   /* const { data } = await supabase.from('products').select('*')*/
+  /* await loadProducts()*/ // Загрузит данные, если они еще не были загружены
+
   const { data } = await supabase.from('products').select('*').order('id', { ascending: true })
 
   products.value = data
@@ -46,6 +45,7 @@ onMounted(async () => {
     const product = products.value.find((p) => p.id === updatedProduct.id)
     if (product) {
       product.is_liked = updatedProduct.is_liked
+      product.selected_color = updatedProduct.selected_color
     }
   })
   // 2. Рисуем на каждом канвасе после того, как Vue их создаст
@@ -104,45 +104,7 @@ const selectItem2 = async (text) => {
   }
 }
 // Функция для переключения лайка и сохранения в базу
-/*
-const toggleLike = async (product) => {
-  // 1. Меняем локально (мгновенный эффект для пользователя)
-  product.is_liked = !product.is_liked
-  product.color_name = selectedColor.value // сохраняем текущий цвет в объект товара
-  await supabase.from('products').update({ is_liked: product.is_liked }).eq('id', product.id)
 
-  bus.emit('update-favorites', product)
-  if (product.is_liked) {
-    // Ждем обновления DOM и рисуем раму
-    nextTick(() => {
-      drawFullFrame(
-        `canvas-fav-${product.id}`,
-        product.textureUrl,
-        150,
-        product.photoUrl,
-        200,
-        20,
-        product.isStretch,
-        product.colorName,
-      )
-    })
-  }
-
-  // 2. Сохраняем в Supabase
-  const { error } = await supabase
-    .from('products')
-    .update({ is_liked: product.is_liked })
-    .eq('id', product.id)
-
-  if (error) {
-    console.error('Ошибка при сохранении лайка:', error.message)
-    // Если ошибка, возвращаем как было (опционально)
-    product.is_liked = !product.is_liked
-  }
-  if (product.is_liked) {
-    bus.emit('draw-frame', product) // Отправляем данные товара напрямую в хедер
-  }
-}*/
 const toggleLike = async (product) => {
   // 1. Меняем локально (мгновенный эффект для пользователя)
   product.is_liked = !product.is_liked
@@ -267,74 +229,33 @@ const changeColor = (name) => {
     drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, name)
   })
 }
-/*
-const changeColor = (name, currentProduct) => {
-  const isReset = selectedColor.value === name
-  selectedColor.value = isReset ? '' : name
-  const paintCost = Number(currentProduct?.paint_price) || 0
-
-  products.value.forEach((p) => {
-    // Если цвет отменили — вычитаем стоимость покраски, если выбрали новый — прибавляем
-    p.price = isReset ? p.price - paintCost : p.price + paintCost
-    drawFullFrame(
-      'canvas-' + p.id,
-      p.frame_url,
-      205,
-      p.image_url,
-      300,
-      50,
-      p.is_stretch,
-      selectedColor.value || undefined,
-    )
-  })
-}
-*/
-/*
-const changeColor = (name, currentProduct) => {
-  const paintCost = Number(currentProduct?.paint_price) || 0
-
-  if (selectedColor.value === name) {
-    selectedColor.value = ''
-    // Сбрасываем к базовой цене и убираем цвет со всех canvas
-    products.value.forEach((p) => {
-      if (p.base_price !== undefined) {
-        p.price = p.base_price
-      }
-      drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, '')
-    })
-  } else {
-    selectedColor.value = name
-    // Сохраняем исходную цену ОДИН раз и прибавляем стоимость покраски
-    products.value.forEach((p) => {
-      if (p.base_price === undefined) {
-        p.base_price = p.price
-      }
-      p.price = p.base_price + paintCost
-      drawFullFrame('canvas-' + p.id, p.frame_url, 205, p.image_url, 300, 50, p.is_stretch, name)
-    })
-  }
-}*/ /*
-const changeColor = (name) => {
-  selectedColor.value = selectedColor.value === name ? '' : name
-
-  products.value.forEach((p) => {
-    drawFullFrame(
-      'canvas-' + p.id,
-      p.frame_url,
-      205,
-      p.image_url,
-      300,
-      50,
-      p.is_stretch,
-      selectedColor.value || undefined,
-    )
-  })
-}*/
 
 // 1. Умная переменная для списка избранного
 const likedProducts = computed(() => {
   return products.value.filter((product) => product.is_liked)
 })
+const selectProduct = (product) => {
+  // Собираем массив только из тех плашек, которые реально есть у товара
+  const labels = []
+  if (product.discount_label) labels.push('sales')
+  if (product.new_label) labels.push('new')
+  if (product.bestseller_label) labels.push('best')
+
+  const productData = {
+    id: product.id,
+    title: product.title,
+    color: selectedColor.value || null,
+    // Текущая цена с учетом выбранного цвета
+    price: selectedColor.value ? product.price + (product.paint_price || 0) : product.price,
+    // Старая цена (передается только если она существует в карточке)
+    oldPrice: product.old_price || null,
+    // Контейнер с плашками передаем только если заполнена хотя бы одна метка
+    propsContainer: labels.length > 0 ? labels : null,
+  }
+
+  console.log('Сформированный объект товара:', productData)
+  // Здесь можно вызвать отправку: axios.post('/api/endpoint', productData)
+}
 </script>
 
 <template>
@@ -1119,9 +1040,13 @@ const likedProducts = computed(() => {
 
               <ul class="catalog-grid__content" :data-grid-colums="selectedCount">
                 <li v-for="product in products" :key="product.id" class="catalog__grid-item">
-                  <article class="product">
+                  <article class="product3">
                     <!-- router-link теперь и есть блок с картинкой -->
-                    <router-link :key="product.id" :to="product.link" class="product__image">
+                    <router-link
+                      :to="{ path: '/product/' + product.id, query: { color: selectedColor } }"
+                      class="product__image"
+                      @click="selectProduct(product)"
+                    >
                       <canvas :id="'canvas-' + product.id">
                         /*:src="product.currentImg"*/ @mouseover="product.currentImg =
                         product.imgHover" @mouseleave="product.currentImg = product.imgDefault"
@@ -1172,7 +1097,7 @@ const likedProducts = computed(() => {
                     </div>
 
                     <h3 class="product__title">
-                      <router-link :to="product.link" class="catalog_link_color">{{
+                      <router-link :to="'/product' + product.id" class="catalog_link_color">{{
                         product.title
                       }}</router-link>
                     </h3>
@@ -1241,7 +1166,7 @@ const likedProducts = computed(() => {
   margin-right: 30px;
 }*/
 /*catalog***************/
-.product2 {
+.product3 {
   position: relative;
 }
 

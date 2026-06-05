@@ -31,28 +31,32 @@
   </div>
 
   <footer class="footer">
-    <div class="container">
+    <div class="container9">
       <nav class="footer__menu">
         <ul class="footer__menu-list">
           <li class="footer__menu-item0">
             <p class="footer__menu-title">навигация</p>
           </li>
           <li class="footer__menu-item">
-            <router-link to="catalog" class="footer__menu-link" href="#">католог</router-link>
+            <router-link to="/catalog" class="footer__menu-link">католог</router-link>
           </li>
           <li class="footer__menu-item">
-            <router-link to="ourworks" class="footer__menu-link" href="#">наши работы</router-link>
+            <router-link to="/favorites" class="footer__menu-link">Избранное</router-link>
           </li>
           <li class="footer__menu-item">
-            <router-link to="adress" class="footer__menu-link" href="#">адрес</router-link>
+            <router-link to="/ourworks" class="footer__menu-link">наши работы</router-link>
           </li>
           <li class="footer__menu-item">
-            <router-link to="ourContacts" class="footer__menu-link" href="#"
-              >наши контакты</router-link
-            >
+            <router-link to="/adress" class="footer__menu-link">адрес</router-link>
           </li>
           <li class="footer__menu-item">
-            <router-link to="about" class="footer__menu-link" href="#">о нас</router-link>
+            <router-link to="/ourContacts" class="footer__menu-link">наши контакты</router-link>
+          </li>
+          <li class="footer__menu-item">
+            <router-link to="/about" class="footer__menu-link" href="#">о нас</router-link>
+          </li>
+          <li class="footer__menu-item">
+            <router-link to="/carzina" class="footer__menu-link" href="#">Корзина</router-link>
           </li>
         </ul>
         <ul class="footer__menu-list">
@@ -119,7 +123,10 @@
 
 <style>
 /*icons*/
-
+.container9 {
+  max-width: 1200px;
+  margin: 0 auto;
+}
 .menu__icons {
   display: flex;
   background-color: #fff;

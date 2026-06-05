@@ -19,70 +19,6 @@ const toggle = (name) => {
 const props = defineProps(['products'])
 
 const likedProducts = computed(() => (props.products || []).filter((p) => p.is_liked))
-/*
-onMounted(() => {
-  // 1. Быстрая фоновая загрузка без блокировки
-  const loadStored = async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_liked', true)
-      .order('updated_at', { ascending: true })
-    if (data) {
-      favorites.value = data
-      // Рисуем с большой задержкой, чтобы не мешать каталогу
-      setTimeout(() => {
-        data.forEach((p) =>
-          drawFullFrame(
-            `canvas-fav-${p.id}`,
-            p.frame_url,
-            120,
-            p.image_url,
-            120,
-            40,
-            p.is_stretch,
-            p.selected_color,
-          ),
-        )
-      }, 800)
-    }
-  }
-  loadStored()
-
-  // 2. Слушатель кликов (всегда активен)
-  bus.on('update-favorites', (updatedProduct) => {
-    const index = favorites.value.findIndex((p) => p.id === updatedProduct.id)
-    if (updatedProduct.is_liked) {
-      if (index === -1) {
-        favorites.value.push(updatedProduct)
-        nextTick(() =>
-          setTimeout(() => {
-            drawFullFrame(
-              `canvas-fav-${updatedProduct.id}`,
-              updatedProduct.frame_url,
-              120,
-              updatedProduct.image_url,
-              120,
-              40,
-              updatedProduct.is_stretch,
-              updatedProduct.color_name,
-            )
-          }, 100),
-        )
-      } else {
-        // Вычисляем новую цену
-        if (favorites.is_liked) {
-          favorites.value[index].price =
-            favorites.value[index].price + favorites.value[index].paint_price
-        } else if (!favorites.is_liked) {
-          favorites.value[index].price = favorites.value[index].price
-        }
-      }
-    } else if (index !== -1) {
-      favorites.value.splice(index, 1)
-    }
-  })
-})*/
 
 onMounted(() => {
   const loadStored = async () => {
@@ -180,17 +116,6 @@ const toggleLike = async (product) => {
   favorites.value = favorites.value.filter((p) => p.id !== product.id)
   bus.emit('update-favorites', product)
 }
-/*
-const changeColorInHeader = (name) => {
-  favorites.value.forEach((p) => {
-    // Если цвет уже такой же — сбрасываем, иначе ставим новый
-    p.color_name = p.color_name === name ? null : name
-    const currentPaintPrice = p.paint_price || 50
-    // Если цвет есть — прибавляем цену покраски, если сбросили — оставляем базовую
-    p.price = p.color_name ? p.base_price + currentPaintPrice : p.base_price
-  })
-}
-  */
 </script>
 
 <template>
@@ -392,7 +317,7 @@ const changeColorInHeader = (name) => {
           </div>
         </div>
         <div class="icon">
-          <router-link to="/registration.vue">
+          <router-link to="/registration">
             <img src="/images/user (3) (2).png" alt="" />
           </router-link>
         </div>
@@ -488,22 +413,20 @@ const changeColorInHeader = (name) => {
 
     <nav class="menu">
       <ul class="menu__list">
-        <router-link to="catalog">
-          <li class="menu__list-item">
-            <a href="" class="menu__list-link">католог</a>
-          </li>
-        </router-link>
         <li class="menu__list-item">
-          <a href="" class="menu__list-link">наши работы</a>
+          <router-link to="/catalog" class="menu__list-link">каталог</router-link>
         </li>
         <li class="menu__list-item">
-          <a href="" class="menu__list-link">адрес</a>
+          <router-link to="/ourworks" class="menu__list-link">наши работы</router-link>
         </li>
         <li class="menu__list-item">
-          <a href="" class="menu__list-link">наши контакты</a>
+          <router-link to="/adress" class="menu__list-link">адрес</router-link>
         </li>
         <li class="menu__list-item">
-          <a href="" class="menu__list-link">о нас</a>
+          <router-link to="/ourContacts" class="menu__list-link">наши контакты</router-link>
+        </li>
+        <li class="menu__list-item">
+          <router-link to="/About" class="menu__list-link">о нас</router-link>
         </li>
       </ul>
     </nav>

@@ -277,8 +277,6 @@
   }
 }
 
-
-
 :root {
   --swiper-navigation-size: 44px;
   /*
@@ -654,7 +652,6 @@
   display: none;
 }
 
-
 /* Zoom container styles start */
 .swiper-zoom-container {
   width: 100%;
@@ -679,7 +676,6 @@
   touch-action: none;
 }
 
-
 /* a11y */
 .swiper .swiper-notification {
   position: absolute;
@@ -689,9 +685,6 @@
   opacity: 0;
   z-index: -1000;
 }
-
-
-
 
 .swiper-thumbs {
   .swiper-slide-thumb-active {
@@ -711,7 +704,6 @@
   flex-wrap: wrap;
   flex-direction: column;
 }
-
 
 .swiper-fade {
   &.swiper-free-mode {
@@ -856,4 +848,8 @@
     backface-visibility: hidden;
     overflow: hidden;
   }
+}
+.swiper-slide {
+  width: 277.5px;
+  margin-right: 30px;
 }
