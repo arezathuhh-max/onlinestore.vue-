@@ -1,11 +1,31 @@
 <script setup>
 import { Pagination } from 'swiper/modules' // 1. Импортируем модуль пагинации
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import '@/assets/main.css'
 import 'swiper/css/pagination'
-import Swiper from 'swiper' // ДОБАВЬТЕ ЭТУ СТРОКУ
+import Swiper from 'swiper'
+import { interiorsList, loadInteriors } from '../assets/interiors.js' // укажите ваш точный путь к файлу
+
 import { useRoute } from 'vue-router' // Импортируем для работы с URL
 import { products, loadProducts } from '@/productsData.js'
+const isPaspartuActive = ref(false) // Цвет кнопки
+const hasPaspartu = computed(() => isPaspartuActive.value)
+
+const isMenuOpen = ref(false) // Видимость меню
+const topPaspartuImg = new Image()
+topPaspartuImg.crossOrigin = 'anonymous'
+const selectedKant = ref(null)
+const kantFrameImg = new Image()
+kantFrameImg.crossOrigin = 'anonymous'
+
+const bottomPaspartuImg = new Image()
+bottomPaspartuImg.crossOrigin = 'anonymous'
+const userLength = ref(759)
+
+const userWidth = ref(574)
+
+const userWidth1 = ref(60)
+const userLength1 = ref(100)
 // Входные параметры (Props)
 const props = defineProps({
   photoUrl: String,
@@ -22,20 +42,23 @@ const props = defineProps({
   scaleOuter: { type: Number, default: 270 },
   scaleInner: { type: Number, default: 270 },
 })
+// Создаем постоянные объекты картинок для кэша
+const outerFrameImg = new Image()
+outerFrameImg.crossOrigin = 'anonymous'
 
+const innerFrameImg = new Image()
+innerFrameImg.crossOrigin = 'anonymous'
 function drawOuterFrame(canvasId, textureUrl, frameW, frameH, s, isStretch, colorName, scale) {
   const canvas = document.getElementById(canvasId)
   if (!canvas) return
   const ctx = canvas.getContext('2d')
   Object.assign(canvas, { width: frameW, height: frameH })
 
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.src = textureUrl
-  img.onload = () => {
+  const render = () => {
+    if (!ctx) return
     ctx.clearRect(0, 0, frameW, frameH)
-
-    const pattern = ctx.createPattern(img, 'repeat')
+    const pattern = ctx.createPattern(outerFrameImg, 'repeat')
+    if (!pattern) return
     const currentScale = scale || 270
     pattern.setTransform(new DOMMatrix().scale(s / currentScale, s / currentScale))
 
@@ -55,7 +78,6 @@ function drawOuterFrame(canvasId, textureUrl, frameW, frameH, s, isStretch, colo
       ctx.clip()
 
       const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
-      // ИСПРАВЛЕНО: ТОЧКА [0, 0] НА МЕСТЕ
       const translates = [
         [0, 0],
         [frameW, 0],
@@ -68,13 +90,14 @@ function drawOuterFrame(canvasId, textureUrl, frameW, frameH, s, isStretch, colo
       ctx.rotate(angles[index])
 
       if (isStretch) {
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, len, s)
+        ctx.drawImage(outerFrameImg, 0, 0, outerFrameImg.width, outerFrameImg.height, 0, 0, len, s)
       } else {
         ctx.fillStyle = pattern
         ctx.fillRect(0, 0, len, s)
+
         ctx.fillRect(0, 0, len + 1, s)
         if (typeof applyColorOverlay === 'function') {
-          applyColorOverlay(ctx, colorName, 0, 0, len + 1, s) // ИСПРАВЛЕНО: передаем точные 6 параметров
+          applyColorOverlay(ctx, colorName, 0, 0, len + 1, s)
         }
       }
       ctx.restore()
@@ -88,6 +111,13 @@ function drawOuterFrame(canvasId, textureUrl, frameW, frameH, s, isStretch, colo
     ctx.shadowColor = 'rgba(0,0,0,0.5)'
     ctx.strokeRect(s - 5, s - 5, frameW - s * 2 + 10, frameH - s * 2 + 10)
     ctx.restore()
+  }
+
+  if (outerFrameImg.src !== textureUrl) {
+    outerFrameImg.src = textureUrl
+    outerFrameImg.onload = render
+  } else {
+    render() // Если картинка уже загружена, рисуем мгновенно
   }
 }
 
@@ -107,13 +137,9 @@ function drawInnerFrame(
   const ctx = canvas.getContext('2d')
   Object.assign(canvas, { width: frameW, height: frameH })
 
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.src = textureUrl
-  img.onload = () => {
+  const render = () => {
     ctx.clearRect(0, 0, frameW, frameH)
-
-    const pattern = ctx.createPattern(img, 'repeat')
+    const pattern = ctx.createPattern(innerFrameImg, 'repeat')
     const currentScale = scale || 270
     pattern.setTransform(new DOMMatrix().scale(sInner / currentScale, sInner / currentScale))
 
@@ -154,24 +180,33 @@ function drawInnerFrame(
       ctx.clip()
 
       const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2]
-      // ИСПРАВЛЕНО: ТОЧКА [0, 0] НА МЕСТЕ
       const translates = [
         [0, 0],
         [frameW, 0],
         [frameW, frameH],
         [0, frameH],
       ]
-
       const len = index % 2 === 0 ? frameW : frameH
 
       ctx.translate(...translates[index])
       ctx.rotate(angles[index])
 
       if (isStretch) {
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, start, len, s)
+        ctx.drawImage(
+          innerFrameImg,
+          0,
+          0,
+          innerFrameImg.width,
+          innerFrameImg.height,
+          0,
+          start,
+          len,
+          s,
+        )
       } else {
         ctx.fillStyle = pattern
         ctx.fillRect(0, start, len, s)
+
         ctx.fillRect(0, start, len + 1, s)
         if (typeof applyColorOverlay === 'function') {
           applyColorOverlay(ctx, colorName, 0, start, len + 1, s)
@@ -195,7 +230,211 @@ function drawInnerFrame(
     )
     ctx.restore()
   }
+
+  if (innerFrameImg.src !== textureUrl) {
+    innerFrameImg.src = textureUrl
+    innerFrameImg.onload = render
+  } else {
+    render()
+  }
 }
+
+function drawPaspartu(
+  canvasId,
+  frameW,
+  frameH,
+  sOuter,
+  sInner,
+  paspartuWidth,
+  layersCount,
+  topTextureUrl,
+  bottomTextureUrl,
+  hasKant,
+  kantTextureUrl,
+  bottomPaspartuWidth,
+) {
+  const canvas = document.getElementById(canvasId)
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  Object.assign(canvas, { width: frameW, height: frameH })
+  ctx.clearRect(0, 0, frameW, frameH)
+
+  const pWidth = Number(paspartuWidth)
+  if (pWidth <= 0) return
+
+  const frameOffset = sOuter + sInner
+
+  const renderLayers = () => {
+    ctx.save()
+
+    // 1. Отрисовка ВЕРХНЕГО слоя паспарту
+    if (topTextureUrl && topPaspartuImg.complete) {
+      const patternTop = ctx.createPattern(topPaspartuImg, 'repeat')
+      patternTop.setTransform(new DOMMatrix().scale(0.15, 0.15))
+      ctx.fillStyle = patternTop
+      ctx.fillRect(frameOffset, frameOffset, frameW - frameOffset * 2, frameH - frameOffset * 2)
+    }
+
+    // 2. Отрисовка НИЖНЕГО слоя паспарту
+    if (
+      (layersCount === 2 || layersCount === '2 слоя') &&
+      bottomTextureUrl &&
+      bottomPaspartuImg.complete
+    ) {
+      const patternBottom = ctx.createPattern(bottomPaspartuImg, 'repeat')
+      patternBottom.setTransform(new DOMMatrix().scale(0.15, 0.15))
+      ctx.fillStyle = patternBottom
+      const bpWidth = Number(bottomPaspartuWidth || paspartuWidth)
+      const innerStep = frameOffset + bpWidth
+      ctx.fillRect(innerStep, innerStep, frameW - innerStep * 2, frameH - innerStep * 2)
+    }
+
+    // 3. ОТРИСОВКА ДЕКОРАТИВНОГО КАНТА КАК ПОЛНОЦЕННОЙ РАМКИ С УГЛАМИ 45°
+    if (hasKant && kantTextureUrl && kantFrameImg.complete) {
+      try {
+        const kantS = 15 // Фиксированная толщина канта
+        const start = frameOffset + pWidth
+        const total = start + kantS
+
+        const patternKant = ctx.createPattern(kantFrameImg, 'repeat')
+        patternKant.setTransform(new DOMMatrix().scale(kantS / 270, kantS / 270))
+
+        const sides = [
+          [start, start, frameW - start, start, frameW - total, total, total, total], // Верхняя
+          [
+            frameW - start,
+            start,
+            frameW - start,
+            frameH - start,
+            frameW - total,
+            frameH - total,
+            frameW - total,
+            total,
+          ], // Правая
+          [
+            frameW - start,
+            frameH - start,
+            start,
+            frameH - start,
+            total,
+            frameH - total,
+            frameW - total,
+            frameH - total,
+          ], // Нижняя
+          [start, frameH - start, start, start, total, total, total, frameH - total], // Левая
+        ]
+
+        for (let index = 0; index < 4; index++) {
+          const points = sides[index]
+          ctx.save()
+          ctx.beginPath()
+
+          // Явно прописываем индексы, чтобы исключить баг компилятора текста
+          ctx.moveTo(points[0], points[1])
+          ctx.lineTo(points[2], points[3])
+          ctx.lineTo(points[4], points[5])
+          ctx.lineTo(points[6], points[7])
+
+          ctx.closePath()
+          ctx.clip()
+
+          // Полностью развернутая логика смещения без использования опасного пустого массива
+          let currentAngle = 0
+          let transX = 0
+          let transY = 0
+          let len = frameW
+
+          if (index === 0) {
+            currentAngle = 0
+            transX = 0
+            transY = 0
+            len = frameW
+          } else if (index === 1) {
+            currentAngle = Math.PI / 2
+            transX = frameW
+            transY = 0
+            len = frameH
+          } else if (index === 2) {
+            currentAngle = Math.PI
+            transX = frameW
+            transY = frameH
+            len = frameW
+          } else if (index === 3) {
+            currentAngle = -Math.PI / 2
+            transX = 0
+            transY = frameH
+            len = frameH
+          }
+
+          ctx.translate(transX, transY)
+          ctx.rotate(currentAngle)
+
+          ctx.fillStyle = patternKant
+          ctx.fillRect(0, start, len + 1, kantS + 1)
+          ctx.restore()
+        }
+      } catch (e) {
+        console.error('Ошибка сборки сторон канта:', e)
+      }
+    }
+
+    // 4. Вырезаем сквозное окно для фотографии строго по внутреннему краю канта
+    ctx.globalCompositeOperation = 'destination-out'
+    const kantS = hasKant && kantTextureUrl ? 15 : 0
+    const finalInnerOffset = frameOffset + pWidth + kantS
+
+    ctx.fillRect(
+      finalInnerOffset,
+      finalInnerOffset,
+      frameW - finalInnerOffset * 2,
+      frameH - finalInnerOffset * 2,
+    )
+
+    ctx.restore()
+  }
+
+  let loadedCount = 0
+  let targetsCount = 0
+
+  if (topTextureUrl && topPaspartuImg.src !== topTextureUrl) {
+    targetsCount++
+    topPaspartuImg.src = topTextureUrl
+    topPaspartuImg.onload = () => {
+      loadedCount++
+      if (loadedCount === targetsCount) renderLayers()
+    }
+  }
+  if (
+    (layersCount === 2 || layersCount === '2 слоя') &&
+    bottomTextureUrl &&
+    bottomPaspartuImg.src !== bottomTextureUrl
+  ) {
+    targetsCount++
+    bottomPaspartuImg.src = bottomTextureUrl
+    bottomPaspartuImg.onload = () => {
+      loadedCount++
+      if (loadedCount === targetsCount) renderLayers()
+    }
+  }
+  if (hasKant && kantTextureUrl && kantFrameImg.src !== kantTextureUrl) {
+    targetsCount++
+    kantFrameImg.src = kantTextureUrl
+    kantFrameImg.onload = () => {
+      loadedCount++
+      if (loadedCount === targetsCount) renderLayers()
+    }
+  }
+
+  if (
+    targetsCount === 0 ||
+    (topPaspartuImg.complete &&
+      (layersCount !== 2 || bottomPaspartuImg.complete) &&
+      (!hasKant || kantFrameImg.complete))
+  ) {
+    renderLayers()
+  }
+}
+
 function applyColorOverlay(ctx, colorName, x, y, width, height) {
   ctx.save()
   ctx.globalCompositeOperation = 'overlay'
@@ -466,6 +705,80 @@ function drawFullFrame(
   }
 }
 
+function drawGlass(
+  canvasId,
+  frameType,
+  frameW,
+  frameH,
+  sOuter,
+  sInner,
+  glassType,
+  selectedInnerFrame,
+) {
+  const canvas = document.getElementById(canvasId)
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+
+  Object.assign(canvas, { width: frameW, height: frameH })
+  ctx.clearRect(0, 0, frameW, frameH)
+
+  if (!glassType) return
+
+  const totalOffset = frameType === 'double' && selectedInnerFrame ? sOuter + sInner : sOuter
+  const glassX = totalOffset
+  const glassY = totalOffset
+  const glassWidth = frameW - totalOffset * 2
+  const glassHeight = frameH - totalOffset * 2
+
+  ctx.save()
+
+  if (glassType === 'regular') {
+    ctx.globalCompositeOperation = 'source-over'
+
+    // 1. Мягкий угловой отсвет
+    const glare1 = ctx.createLinearGradient(
+      glassX,
+      glassY,
+      glassX + glassWidth,
+      glassY + glassHeight,
+    )
+    glare1.addColorStop(0, 'rgba(255, 255, 255, 0.42)')
+    glare1.addColorStop(0.3, 'rgba(255, 255, 255, 0.15)')
+    glare1.addColorStop(0.6, 'rgba(255, 255, 255, 0.0)')
+
+    ctx.fillStyle = glare1
+    ctx.fillRect(glassX, glassY, glassWidth, glassHeight)
+
+    // 2. Та самая мощная и широкая центральная полоса окна
+    const glare2 = ctx.createLinearGradient(
+      glassX,
+      glassY,
+      glassX + glassWidth,
+      glassY + glassHeight,
+    )
+    glare2.addColorStop(0, 'rgba(255, 255, 255, 0.0)')
+    glare2.addColorStop(0.35, 'rgba(255, 255, 255, 0.0)')
+    glare2.addColorStop(0.5, 'rgba(255, 255, 255, 0.38)') // Плотное отражение по центру
+    glare2.addColorStop(0.65, 'rgba(255, 255, 255, 0.0)')
+    glare2.addColorStop(1, 'rgba(255, 255, 255, 0.0)')
+
+    ctx.fillStyle = glare2
+    ctx.fillRect(glassX, glassY, glassWidth, glassHeight)
+  } else if (glassType === 'antiglare') {
+    ctx.globalCompositeOperation = 'source-over'
+
+    const matte = ctx.createLinearGradient(glassX, glassY, glassX, glassY + glassHeight)
+    matte.addColorStop(0, 'rgba(255, 255, 255, 0.28)')
+    matte.addColorStop(1, 'rgba(230, 235, 245, 0.12)')
+
+    ctx.fillStyle = matte
+    ctx.fillRect(glassX, glassY, glassWidth, glassHeight)
+
+    ctx.filter = 'blur(2px)'
+  }
+
+  ctx.restore()
+}
 const route = useRoute()
 const productId = Number(route.params.id) // Получаем ID товара из URL-адреса страницы
 
@@ -474,11 +787,7 @@ const currentProduct = computed(() => {
   if (!products.value.length) return {}
   return products.value.find((p) => String(p.id) === String(productId)) || {}
 })
-watch(currentProduct, (newProduct) => {
-  if (newProduct && newProduct.id) {
-    setTimeout(renderCanvas, 50)
-  }
-})
+
 // Переменная для выбранного цвета (по умолчанию подставляем Green, как в вашем HTML)
 const selectedColor = ref(route.query.color || '')
 
@@ -504,67 +813,109 @@ const renderCanvas = () => {
   }
 }*/
 // 1. Исправленный рендер при загрузке страницы
+// Добавьте эту строку отдельно в <script setup>, чтобы её видел и HTML, и функция renderAll
 
 function renderAll() {
   if (!currentProduct.value || !currentProduct.value.id) return
 
-  // НАСТРОЙКА РАЗМЕРОВ: Задайте здесь нужную ширину рам в пикселях
-  const outerW = 60 // Ширина внешней узорчатой рамы
-  const innerW = 60 // Ширина внутренней рамы (канта)
+  // Принудительно приводим к числам, чтобы избежать текстового сравнения строк
+  const w1 = Number(userWidth1.value || 0)
+  const l1 = Number(userLength1.value || 0)
 
-  // 1. Отрисовка центрального фото (сдвигается ровно на сумму ширин рам)
-  drawPhotoLayer('photoCanvas', currentProduct.value.image_url, 574, 759, outerW, innerW)
+  // ИСПОЛЬЗУЕМ ЧИСЛА (w1 и l1) вместо строк (userWidth1.value)
+  const isHorizontalAndHasInterior = !isSquare.value && w1 > l1 * 1.15 && currentInterior.value
 
-  // 2. Отрисовка внешней рамы
+  // Вычисляем размеры canvas с учетом горизонтальной рамы в интерьере
+  const canvasH = isSquare.value
+    ? 600
+    : isHorizontalAndHasInterior
+      ? 754 // Исправлено: горизонтальная рама в интерьере должна быть 400 в высоту
+      : w1 > l1 * 1.15
+        ? 400
+        : 759
+
+  const canvasW = isSquare.value
+    ? 574
+    : isHorizontalAndHasInterior
+      ? 677 // Исправлено: горизонтальная рама в интерьере должна быть 677 в ширину
+      : w1 > l1 * 1.15
+        ? 677
+        : 574
+
+  const outerW = 60
+  const innerW = 60
+
+  // 1. ОТРИСОВКА ПАСПАРТУ
+  drawPaspartu(
+    'paspartuCanvas',
+    canvasW,
+    canvasH,
+    outerW,
+    frameType.value === 'double' && selectedInnerFrame.value ? innerW : 0,
+    topPaspartuWidth.value,
+    paspartuLayers.value,
+    isPaspartuActive.value ? selectedTopPaspartu.value?.image : null,
+    isPaspartuActive.value ? selectedBottomPaspartu.value?.image : null,
+    isPaspartuActive.value ? hasKant.value : false,
+    isPaspartuActive.value ? selectedKant.value?.image : null,
+    bottomPaspartuWidth.value,
+  )
+
+  // 2. ОТРИСОВКА ФОТОГРАФИИ
+  drawPhotoLayer('photoCanvas', currentProduct.value.image_url, canvasW, canvasH)
+
+  // 3. ОТРИСОВКА ВНЕШНЕЙ РАМЫ
   drawOuterFrame(
     'outerFrameCanvas',
     currentProduct.value.frame_url,
-    574,
-    759,
+    canvasW,
+    canvasH,
     outerW,
     currentProduct.value.is_stretch,
     selectedColor.value || '',
     270,
   )
 
-  // 3. Отрисовка внутренней рамы (только если выбран режим двойной рамы)
+  // 4. ОТРИСОВКА ВНУТРЕННЕЙ РАМЫ
   if (frameType.value === 'double' && selectedInnerFrame.value) {
-    // 3. Отрисовка внутренней рамы (ИСПРАВЛЕННЫЙ ВЫЗОВ)
-    if (frameType.value === 'double' && selectedInnerFrame.value) {
-      drawInnerFrame(
-        'innerFrameCanvas',
-        selectedInnerFrame.value.frame_url,
-        574,
-        759,
-        outerW,
-        innerW,
-        false,
-        innerFrameColor.value || '', // 8-й параметр: правильная переменная цвета канта!
-        270, // 9-й параметр: число масштаба
-      )
-    }
+    drawInnerFrame(
+      'innerFrameCanvas',
+      selectedInnerFrame.value.frame_url,
+      canvasW,
+      canvasH,
+      outerW,
+      innerW,
+      false,
+      innerFrameColor.value || '',
+      270,
+    )
   } else {
-    // Если рама одиночная — полностью очищаем внутренний холст от старых рисунков
     const canvas = document.getElementById('innerFrameCanvas')
     if (canvas) {
       const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, 574, 759)
+      if (ctx) ctx.clearRect(0, 0, canvasW, canvasH)
     }
   }
-}
 
-// Если данные пришли чуть позже рендера, watch заметит появление товара и нарисует холст
-watch(currentProduct, (newProduct) => {
-  if (newProduct && newProduct.id) {
-    setTimeout(renderAll, 50) // ИСПРАВЛЕНО: вызываем renderAll вместо renderCanvas
-  }
-})
+  // 5. ОТРИСОВКА СТЕКЛА
+  drawGlass(
+    'glassCanvas',
+    frameType.value,
+    canvasW,
+    canvasH,
+    outerW,
+    innerW,
+    selectedGlassType.value,
+    selectedInnerFrame.value,
+  )
+}
 
 // Отрисовка холста при первой загрузке страницы карточки
 onMounted(async () => {
   await loadProducts() // 1. Ждем окончания загрузки данных из базы
   dbFrames.value = products.value
   renderAll()
+  await loadInteriors()
 })
 // Управление видимостью формы
 const showForm = ref(false)
@@ -746,67 +1097,680 @@ const selectInnerColor = (colorName) => {
 
 /*двойная рама*/
 
-function drawPhotoLayer(canvasId, photoUrl, frameW, frameH, sOuter, sInner) {
+function drawPhotoLayer(canvasId, imgUrl, frameW, frameH) {
   const canvas = document.getElementById(canvasId)
   if (!canvas) return
   const ctx = canvas.getContext('2d')
   Object.assign(canvas, { width: frameW, height: frameH })
 
-  const photo = new Image()
-  photo.crossOrigin = 'anonymous'
-  photo.src = photoUrl
-  photo.onload = () => {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.src = imgUrl
+  img.onload = () => {
     ctx.clearRect(0, 0, frameW, frameH)
 
-    // Вычисляем точный внутренний край
-    const offset = Number(sOuter) + Number(sInner)
+    // ИСПРАВЛЕНО: Размер картины жестко привязан к холсту и больше НЕ зависит от рам!
+    // Картинка занимает весь холст (с небольшим фиксированным отступом, например 60px под внешнюю раму)
+    const baseOffset = 60
+    const photoX = baseOffset
+    const photoY = baseOffset
+    const photoW = frameW - baseOffset * 2
+    const photoH = frameH - baseOffset * 2
 
-    // Рисуем фото с нахлестом в 4 пикселя ПОД раму, чтобы гарантированно закрыть белое пространство
-    ctx.drawImage(
-      photo,
-      0,
-      0,
-      photo.width,
-      photo.height,
-      offset - 60,
-      offset - 60,
-      frameW - offset * 2 + 120,
-      frameH - offset * 2 + 120,
-    )
+    // object-fit: cover для сохранения пропорций без сжатия
+    const imgRatio = img.width / img.height
+    const canvasRatio = photoW / photoH
 
-    // Эффект глянца поверх картины
-    const g = ctx.createLinearGradient(offset, offset, frameW, frameH)
-    g.addColorStop(0, 'rgba(255,255,255,0.4)')
-    g.addColorStop(0.5, 'rgba(255,255,255,0)')
-    g.addColorStop(1, 'rgba(0,0,0,0.1)')
-    ctx.fillStyle = g
-    ctx.fillRect(offset, offset, frameW - offset * 2, frameH - offset * 2)
+    let srcX = 0,
+      srcY = 0,
+      srcW = img.width,
+      srcH = img.height
+
+    if (imgRatio > canvasRatio) {
+      srcW = img.height * canvasRatio
+      srcX = (img.width - srcW) / 2
+    } else {
+      srcH = img.width / canvasRatio
+      srcY = (img.height - srcH) / 2
+    }
+
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, photoX, photoY, photoW, photoH)
   }
 }
+
 const isPanelOpen = ref(true) // По умолчанию панель отображается
 
-const totalPrice = computed(() => {
-  // Базовая цена товара
-  let price = Number(currentProduct.value?.price || 0)
+const selectedBottomPaspartuPrice = ref(null)
 
-  // 1. Покраска первой (внешней) рамы
+const totalPrice = computed(() => {
+  // Толщина элементов, переведённая в сантиметры (10см, 10см, 5см)
+  const outerW = Number(currentProduct.value?.frame_width || 5)
+  const innerW = Number(selectedInnerFrame.value?.frame_width || 10)
+  const slipW = Number(5)
+
+  let basePrice = Number(currentProduct.value?.price || 0)
+  if (selectedColor.value) {
+    basePrice += Number(currentProduct.value?.paint_price || 0)
+  }
+
+  // 1. Проверяем ввод размеров пользователем в см
+  const hasValidSizes = userWidth1.value > 0 && userLength1.value > 0
+
+  // Если поля пустые, сразу возвращаем только чистую базовую цену за 1 метр багета
+  if (!hasValidSizes) {
+    return Number(Number(basePrice || 0).toFixed(2))
+  }
+
+  // Если размеры валидны, запускаем полный расчёт
+  const w1 = Number(userWidth1.value)
+  const l1 = Number(userLength1.value)
+
+  // Расчёт первой (внешней) рамы: периметр с запасом на 8 углов в метрах х цена за метр
+  const outerLineM = (w1 * 2 + l1 * 2 + outerW * 8) / 100
+  let price = outerLineM * basePrice
+
+  // Добавляем покраску внешней рамы
   if (selectedColor.value) {
     price += Number(currentProduct.value?.paint_price || 0)
   }
 
-  // 2. Условия для двойной рамы
+  // Переменные для хранения остаточного свободного пространства в см
+  let currentW = w1
+  let currentL = l1
+
+  // Переменные для фиксации размера проёма под стекло (после вычета только рам)
+  let glassW = w1
+  let glassL = l1
+
+  // 2. РАСЧЁТ ДЛЯ ВТОРОЙ РАМЫ
   if (frameType.value === 'double') {
-    // Цена выбранной внутренней рамы
-    if (selectedInnerFrame.value?.price) {
-      price += Number(selectedInnerFrame.value.price)
+    // Вычитаем из свободного места толщину внешней рамы (в см)
+    currentW = currentW - outerW * 2
+    currentL = currentL - outerW * 2
+
+    if (selectedInnerFrame.value?.price && currentW > 4 && currentL > 4) {
+      // Погонная длина второй рамы в метрах (деление на 100)
+      const innerLineM = (currentW * 2 + currentL * 2 + innerW * 8) / 100
+      price += innerLineM * Number(selectedInnerFrame.value.price)
     }
-    // Покраска внутренней рамы (фиксированная цена 50)
-    if (innerFrameColor.value) {
-      price += 50
+    if (innerFrameColor.value) price += 50 // Покраска канта
+
+    // Вычитаем толщину второй рамы для дальнейших расчётов
+    currentW = currentW - innerW * 2
+    currentL = currentL - innerW * 2
+
+    // Обновляем габариты проёма под стекло — оно лежит внутри обеих рам
+    glassW = currentW
+    glassL = currentL
+  } else {
+    // Если рама одинарная, стекло лежит сразу внутри первой рамы
+    glassW = currentW - outerW * 2
+    glassL = currentL - outerW * 2
+  }
+
+  // 3. РАСЧЁТ ПАСПАРТУ И СЛИПА (Входные данные ширины полей из ползунков переводим в см, если они в мм)
+  if (isPaspartuActive.value && currentW > 10 && currentL > 10) {
+    // Предполагаем, что ползунок topPaspartuWidth даёт мм (например 50мм), делим на 10 для см
+    const topOffsetCm = Number(topPaspartuWidth.value || 0) / 10
+
+    // Верхний слой паспарту (площадь внешнего листа картона в кв.м)
+    if (selectedTopPaspartu.value?.price) {
+      const areaTop = ((currentW + topOffsetCm * 2) / 100) * ((currentL + topOffsetCm * 2) / 100)
+      price += areaTop * Number(selectedTopPaspartu.value.price)
+    }
+
+    // Нижний слой паспарту (если выбрано 2 слоя)
+    if (paspartuLayers.value === 2 && selectedBottomPaspartu.value?.price) {
+      const bottomOffsetCm = Number(bottomPaspartuWidth.value || 0) / 10
+      const areaBottom =
+        ((currentW + bottomOffsetCm * 2) / 100) * ((currentL + bottomOffsetCm * 2) / 100)
+      price += areaBottom * Number(selectedBottomPaspartu.value.price)
+    }
+
+    // Деревянный кант-слип (по погонной длине рамки канта в метрах)
+    if (hasKant.value && selectedKant.value?.price) {
+      const windowW = currentW - topOffsetCm * 2
+      const windowL = currentL - topOffsetCm * 2
+
+      if (windowW > 0 && windowL > 0) {
+        const slipLineM = (windowW * 2 + windowL * 2 + slipW * 8) / 100
+        price += slipLineM * Number(selectedKant.value.price)
+      }
     }
   }
 
-  return price
+  // 4. ИСПРАВЛЕННЫЙ РАСЧЁТ СТЕКЛА (Считается по проёму рам, без вычета паспарту и слипа)
+  if (selectedGlassType.value && glassW > 5 && glassL > 5) {
+    const areaGlass = (glassW / 100) * (glassL / 100)
+    const glassPricePerMeter =
+      selectedGlassType.value === 'regular' ? priceRegular.value : priceAntiglare.value
+    price += areaGlass * glassPricePerMeter
+  }
+
+  return Number(price.toFixed(2))
+})
+// 1. Состояние тумблеров и переключателей
+/*const hasPaspartu = ref(false)*/ // Тумблер [ Добавить паспарту ]
+const paspartuLayers = ref(1) // Количество слоев: 1 или 2
+const hasKant = ref(false) // Тумблер [ Добавить кант ]
+
+// 2. Размеры паспарту (в миллиметрах)
+const topPaspartuWidth = ref(0) // Изначально ширина равна 0, поэтому паспарту скрыто
+// Ползунок №1: Общая (верхняя) ширина
+const bottomPaspartuWidth = ref(5) // Ползунок №2: Ширина нижнего слоя
+const KANT_FIXED_WIDTH = 3 // Фиксированная ширина канта (слипа)
+
+// 3. Выбранные цвета
+const topColor = ref('') // Цвет верхнего (единственного) паспарту
+const bottomColor = ref('') // Цвет нижнего паспарту
+const kantColor = ref('') // Цвет фиксированного канта
+
+// 4. Ограничитель динамического максимума для нижнего ползунка
+const maxBottomWidth = computed(() => {
+  return topPaspartuWidth.value > 1 ? topPaspartuWidth.value - 1 : 1
+})
+
+// Переменные для хранения выбранного картона
+const selectedTopPaspartu = ref(null)
+const selectedBottomPaspartu = ref(null)
+
+// Функция для выбора двойной рамы
+
+// Функция для активации паспарту
+
+// Функция для клика по кнопке "2 слоя"
+const setTwoLayers = () => {
+  paspartuLayers.value = 2
+  hasKant.value = false // Автоматически выключаем кант
+}
+
+// Функция для клика по кнопке "Добавить кант"
+const toggleKant = () => {
+  hasKant.value = !hasKant.value
+  if (hasKant.value) {
+    paspartuLayers.value = 1 // Автоматически сбрасываем на 1 слой
+  }
+}
+
+const paspartuList = ref([
+  { id: 1, name: 'Белый классик', image: '/images/pasportu.jpg', price: 50 },
+  {
+    id: 2,
+    name: 'Черный бархат',
+    image: '/images/67810224_vintage_style_recycled_paper_texture_background_0401.jpg',
+    price: 50,
+  },
+  { id: 3, name: 'Кремовый шелк', image: '/images/paspartu/cream.jpg', price: 50 },
+  { id: 4, name: 'Серый графит', image: '/images/paspartu/grey.jpg', price: 50 },
+  { id: 5, name: 'Глубокий синий', image: '/images/paspartu/blue.jpg', price: 50 },
+  { id: 6, name: 'Черный бархат', image: '/images/paspartu/black.jpg', price: 50 },
+  { id: 7, name: 'Кремовый шелк', image: '/images/paspartu/cream.jpg', price: 50 },
+  { id: 8, name: 'Серый графит', image: '/images/paspartu/grey.jpg', price: 50 },
+  { id: 9, name: 'Глубокий синий', image: '/images/paspartu/blue.jpg', price: 50 },
+])
+
+const kantList = ref([
+  { id: 1, name: 'Белый классик', image: '/images/baget3.jpg', price: 70 },
+  { id: 2, name: 'Серебро матовое', image: '/images/kant-silver.jpg', price: 50 },
+  { id: 3, name: 'Черный глянец', image: '/images/kant-black.jpg', price: 50 },
+  { id: 4, name: 'Белый лак', image: '/images/kant-white.jpg', price: 50 },
+  { id: 5, name: 'Бронза антик', image: '/images/kant-bronze.jpg', price: 50 },
+])
+const paspartuWidth = ref(40)
+// Переменные для хранения выбранных объектов
+const selectedPaspartu = ref(null)
+const paspartuPrice = ref(0)
+
+// Функция клика по кнопке .paspartu-slide-btn
+const togglePaspartu = (item) => {
+  if (selectedPaspartu.value?.id === item.id) {
+    // Второе нажатие: сбрасываем выбор и обнуляем цену
+    selectedPaspartu.value = null
+    paspartuPrice.value = 0
+  } else {
+    // Первое нажатие: сохраняем выбор и записываем цену
+    selectedPaspartu.value = item
+    paspartuPrice.value = item.price
+  }
+}
+// Автоматический перезапуск при изменении ползунка ширины паспарту
+// Перерисовывать холст при движении любого ползунка ширины
+// 1. ОДИН watch для загрузки товара (удалите старый дубликат!)
+watch(currentProduct, (newProduct) => {
+  if (newProduct?.id) {
+    setTimeout(renderAll, 50)
+  }
+})
+
+// 2. ЕДИНЫЙ watch для всех ползунков, слоев и кликов паспарту
+watch(
+  [paspartuWidth, topPaspartuWidth, bottomPaspartuWidth, paspartuLayers, hasPaspartu],
+  ([newWidth, newTopWidth]) => {
+    // Синхронизируем нижнюю ширину, если она пытается стать больше верхней
+    if (bottomPaspartuWidth.value >= newTopWidth) {
+      bottomPaspartuWidth.value = newTopWidth > 1 ? newTopWidth - 1 : 1
+    }
+
+    // Моментально перерисовываем холст при любом сдвиге
+    renderAll()
+  },
+)
+// 1. Следим за переключением количества слоев паспарту
+watch(paspartuLayers, (newLayers) => {
+  if (newLayers === 1 || newLayers === '1 слой') {
+    selectedBottomPaspartu.value = null // Снимаем активность с нижнего паспарту
+    selectedKant.value = null // Снимаем активность с карточки канта
+    hasKant.value = false // Выключаем тумблер канта
+    renderAll()
+  }
+})
+
+// 2. Следим за тумблером канта (при переходе с канта на 2 слой и наоборот)
+watch(hasKant, (kantActive) => {
+  if (kantActive) {
+    // Если включили кант — снимаем активность с карточки нижнего паспарту
+    selectedBottomPaspartu.value = null
+  } else {
+    // Если выключили кант (перешли на 2 слой) — снимаем активность с карточки канта
+    selectedKant.value = null
+  }
+  renderAll()
+})
+const pasportuPrice = () => {
+  // Складываем базовую цену рамы, цену паспарту и цену канта
+  const total = Number(baseFramePrice?.value || 0) + paspartuPrice.value + kantPrice.value
+
+  // Записываем финальный результат в реактивную переменную для экрана
+  finalPrice.value = total
+}
+
+// Флаг для скрытия контента по нажатию на SVG-крестик
+const isKantContentHidden = ref(false)
+
+// Наблюдатель за кнопкой "Добавить паспарту" для полной очистки при удалении
+watch(isPaspartuActive, (isActive) => {
+  if (!isActive) {
+    selectedTopPaspartu.value = null
+    selectedBottomPaspartu.value = null
+    selectedKant.value = null
+    hasKant.value = false
+    paspartuLayers.value = 1
+    isMenuOpen.value = false
+
+    // ПРЯМОЙ ВЫЗОВ ДЛЯ МГНОВЕННОГО СТИРАНИЯ С ХОЛСТА
+    renderAll()
+  } else {
+    isMenuOpen.value = true
+  }
+})
+// Размеры стекла
+const width = ref(0)
+const length = ref(0)
+
+// Состояния активности кнопок
+const isMainActive = ref(false) // Показ подменю
+const selectedGlassType = ref('') // Выбранный тип ('regular' или 'antiglare')
+
+// Две переменные цены за метр
+const priceRegular = ref(120)
+const priceAntiglare = ref(170)
+// Вспомогательная функция, которая собирает все реактивные переменные и вызывает отрисовку
+
+// Переключатель главной кнопки «Добавить стекло»
+const toggleMainButton = () => {
+  // Если стекло уже выбрано, второй клик полностью его удаляет и гасит кнопку
+  if (selectedGlassType.value) {
+    selectedGlassType.value = ''
+    isMainActive.value = false
+    renderAll()
+  } else {
+    // Если стекло не выбрано, просто переключаем показ меню (открыть/закрыть)
+    isMainActive.value = !isMainActive.value
+  }
+}
+
+// Выбор типа стекла
+const selectGlass = (type) => {
+  if (selectedGlassType.value === type) {
+    selectedGlassType.value = '' // Второе нажатие сбрасывает стекло
+  } else {
+    selectedGlassType.value = type // Первое нажатие активирует его
+  }
+  renderAll() // Мгновенно обновляет калькулятор и Canvas
+}
+
+// Общая функция/вычисляемое свойство для расчета
+const glassPrice = computed(() => {
+  // Проверяем ввод размеров
+  if (width.value <= 0 || length.value <= 0) return 0
+
+  let currentPricePerMeter = 0
+
+  // Проверяем условие, какое стекло выбрано
+  if (selectedGlassType.value === 'regular') {
+    currentPricePerMeter = priceRegular.value
+  } else if (selectedGlassType.value === 'antiglare') {
+    currentPricePerMeter = priceAntiglare.value
+  } else {
+    return 0 // Если стекло еще не выбрано, цена 0
+  }
+
+  // Формула: Площадь (Ширина * Длина) * Цена за метр
+  const glassCost = width.value * length.value * currentPricePerMeter
+
+  // Округляем до 2 знаков после запятой
+  return Number(glassCost.toFixed(2))
+})
+const togglePanel = (panelName) => {
+  // 1. Управление ОДИНАРНОЙ и ДВОЙНОЙ рамой
+  if (panelName === 'single' || panelName === 'double') {
+    frameType.value = panelName // Записываем 'single' или 'double'
+
+    if (panelName === 'double') {
+      isPanelOpen.value = true
+      isMenuOpen.value = false // Закрываем паспарту
+      isMainActive.value = false // Закрываем стекло
+    } else {
+      isPanelOpen.value = false
+      selectedInnerFrame.value = null // Сброс данных внутренней рамы
+      innerFrameColor.value = ''
+    }
+  }
+
+  // 2. Управление ПАСПАРТУ
+  else if (panelName === 'paspartu') {
+    isPaspartuActive.value = !isPaspartuActive.value // Переключаем показ паспарту
+
+    if (isPaspartuActive.value) {
+      isPanelOpen.value = false // Закрываем раму
+      isMainActive.value = false // Закрываем стекло
+    } else {
+      // Полный сброс паспарту и канта при повторном клике
+      selectedTopPaspartu.value = null
+      selectedBottomPaspartu.value = null
+      hasKant.value = false // Отключаем кант
+      selectedKant.value = null // Очищаем выбранный кант
+    }
+  }
+
+  // 3. Управление СТЕКЛОМ
+  else if (panelName === 'glass') {
+    // Если стекло уже выбрано, второй клик полностью удаляет его
+    if (selectedGlassType.value) {
+      selectedGlassType.value = ''
+      isMainActive.value = false
+    } else {
+      // Если не выбрано, просто открываем панель (не трогая паспарту!)
+      isMainActive.value = !isMainActive.value
+      if (isMainActive.value) {
+        isPanelOpen.value = false
+        isMenuOpen.value = false
+      }
+    }
+  }
+  renderAll() // Перерисовываем холст после каждого изменения
+}
+const closeAllPanels = () => {
+  isPanelOpen.value = false
+  isMenuOpen.value = false // Прячет панель паспарту, сохраняя его на холсте
+  isMainActive.value = false
+}
+const sizeText = computed(() => {
+  // Если оба поля полностью стерты (равны 0 или пустые), просим ввести размеры
+  if (!userWidth1.value && !userLength1.value) {
+    return 'Выберите размер'
+  }
+
+  // При первой загрузке или вводе возвращаем текущие значения переменных через «×»
+  return `${userWidth1.value} × ${userLength1.value} см`
+})
+// 1. Отдельная чистая функция для полного сброса всех опций калькулятора
+const resetAllOptions = () => {
+  frameType.value = 'single' // Сброс на одинарную раму
+  selectedInnerFrame.value = null // Очистка выбранной второй рамы
+  innerFrameColor.value = null // Очистка выбранного цвета второй рамы
+
+  isPaspartuActive.value = false // Отключение паспарту
+  selectedTopPaspartu.value = null // Очистка верхнего паспарту
+  selectedBottomPaspartu.value = null // Очистка нижнего паспарту
+  hasKant.value = false // Отключение канта/слипа
+
+  selectedGlassType.value = null // Отключение стекла
+
+  // Принудительно перерисовываем Canvas, чтобы стереть все лишние слои с экрана
+  renderAll()
+}
+const isSquare = ref(false)
+
+// 2. Функция валидации при потере фокуса или изменении (событие @change)
+const validateSize = (fieldName) => {
+  const variables = { userWidth1, userLength1 }
+  const val = variables[fieldName].value
+
+  if (val > 200 || val < 5 || val === 0 || val === null || val === '') {
+    variables[fieldName].value = 0
+  }
+
+  // Если оба поля стали равны 0 — сбрасываем опции и чистим холст
+  if (userWidth1.value === 0 && userLength1.value === 0) {
+    selectedColor.value = '' // Сброс цвета внешней рамы
+
+    resetAllOptions()
+  }
+  // Обновляем состояние квадрата строго после потери фокуса / Enter
+  const w = Number(userWidth1.value || 0)
+  const l = Number(userLength1.value || 0)
+  isSquare.value = w > 0 && w === l
+  checkSizeLimits()
+}
+
+// 3. Функция для кнопки «Очистить»
+const clearSizes = () => {
+  userWidth1.value = 0
+  userLength1.value = 0
+  selectedColor.value = '' // Сброс цвета внешней рамы при клике на «Очистить»
+
+  // Сразу сбрасываем все опции и очищаем Canvas без лишних проверок
+  resetAllOptions()
+}
+
+// Блокировка кнопки двойной рамы: если размеры меньше (innerW * 2 + 5 см на картину)
+// 1. Фильтруем список вторых рам, пропуская только тонкие варианты
+// 1. Фильтруем список вторых рам, используя ваш реальный массив dbFrames
+const filteredInnerFrames = computed(() => {
+  const w = Number(userWidth1.value || 0)
+  const l = Number(userLength1.value || 0)
+  const outerW = Number(currentProduct.value?.frame_width || 5)
+
+  // Если размеры еще не ввели, показываем весь ваш список рам
+  if (w === 0 || l === 0) return dbFrames.value || []
+
+  // Вычисляем максимальную толщину багета
+  const maxInnerW = (Math.min(w, l) - outerW * 2 - 10) / 2
+
+  // Возвращаем только подходящие рамы из dbFrames
+  return (dbFrames.value || []).filter((frame) => {
+    return Number(frame.frame_width || 5) < maxInnerW
+  })
+})
+
+// 2. Блокируем кнопку, если подходящих багетов в отфильтрованном списке нет
+const isDoubleFrameButtonDisabled = computed(() => {
+  const w = Number(userWidth1.value || 0)
+  const l = Number(userLength1.value || 0)
+
+  return w > 0 && l > 0 && filteredInnerFrames.value.length === 0
+})
+
+// Блокировка кнопки паспарту: если ширина > 60 см или высота > 100 см
+const isPaspartuDisabled = computed(() => {
+  const w = Number(userWidth1.value || 0)
+  const l = Number(userLength1.value || 0)
+  return w > 60 || l > 100
+})
+
+// Автоматический сброс и очистка памяти при нарушении лимитов размеров
+const checkSizeLimits = () => {
+  if (frameType.value === 'double' && isDoubleFrameButtonDisabled.value) {
+    frameType.value = 'single'
+    selectedInnerFrame.value = null
+    innerFrameColor.value = null
+  }
+
+  // 2. Очистка паспарту и канта, если размеры превысили 60х100 см
+  if (isPaspartuActive.value && isPaspartuDisabled.value) {
+    isPaspartuActive.value = false
+    selectedTopPaspartu.value = null
+    selectedBottomPaspartu.value = null
+    hasKant.value = false
+  }
+
+  // Мгновенно обновляем холст Canvas без зависаний
+  renderAll()
+}
+
+// Ссылки на HTML-элементы и данные
+const mainImageRef = ref(null)
+const currentInterior = ref(null) // Сюда прилетит текущая комната из Supabase
+
+// Исходные координаты проема рамы на оригинальной большой картинке из БД
+const originalFrameCoords = computed(() => {
+  return {
+    top: currentInterior.value?.frame_top || 0,
+    left: currentInterior.value?.frame_left || 0,
+  }
+})
+
+// Размеры оригинальной картинки из базы данных для расчета пропорций
+const originalImageWidth = computed(() => currentInterior.value?.width || 1107)
+
+// Текущая реальная ширина картинки на экране (меняется датчиком ResizeObserver)
+const currentImageWidth = ref(0)
+
+// Коэффициент сжатия: во сколько раз картинка на экране меньше, чем её оригинал в БД
+const k = computed(() => {
+  if (!currentImageWidth.value) return 1
+  return originalImageWidth.value / currentImageWidth.value
+})
+
+// ДИНАМИЧЕСКИЕ СТИЛИ ДЛЯ ТОЧНОГО СДВИГА И МАСШТАБИРОВАНИЯ РАМЫ НА СТЕНЕ
+/*
+const canvasContainerStyle = computed(() => {
+  const originalWidth = 0.2
+  // Если датчик еще не выдал ширину экрана, ставим масштаб 1, иначе делим экран на оригинал
+  const scaleValue = 0.9
+
+  return {
+    position: 'absolute',
+    top: `${originalFrameCoords.value.top * scaleValue}px`,
+    left: `${originalFrameCoords.value.left * scaleValue}px`,
+    width: '574px',
+    height: isSquare.value ? '600px' : '759px',
+    transform: `scale(${scaleValue})`,
+    transformOrigin: 'top left',
+    zIndex: 12, // Подняли чуть выше, чтобы точно перекрыть всё
+  }
+})*/
+
+const canvasContainerStyle = computed(() => {
+  // НОВЫЙ БЛОК: Если рама горизонтальная И выбран интерьер — возвращаем стандартные базовые размеры конструктора
+
+  // 1. Загружаем точные оригинальные размеры интерьера и проёма из таблицы Supabase
+  const originalWidth = currentInterior.value?.width || 1107
+  const frameW = currentInterior.value?.frame_width || 400
+  const frameH = currentInterior.value?.frame_height || 500
+  const frameTop = currentInterior.value?.frame_top || 0
+  const frameLeft = currentInterior.value?.frame_left || 0
+  const frameRotate = currentInterior.value?.frame_rotation || 0
+
+  // 2. Вычисляем коэффициенты уменьшения для обеих сторон отдельно (БЕЗ Math.min)
+  // Math.max защищает каждую сторону от сжатия меньше 30% от проема стены
+  const widthScale = Math.max((userWidth1.value || 200) / 200, 0.5)
+  const heightScale = Math.max((userLength1.value || 200) / 200, 0.5)
+
+  // 3. Находим масштаб экрана (текущий экран / оригинал из базы)
+  const screenK = currentImageWidth.value
+    ? currentImageWidth.value / originalWidth
+    : 574 / originalWidth
+
+  // 4. Меняем размеры независимо: высота вытянется на 200, а ширина сожмется до 10
+  const finalScreenWidth = frameW * widthScale * screenK
+  const finalScreenHeight = frameH * heightScale * screenK
+
+  // 5. Координаты железно привязаны к исходной верхней левой точке проема
+  const finalScreenLeft = frameLeft * screenK
+  const finalScreenTop = frameTop * screenK
+  /* const scaleX = Math.max((userWidth1.value || 200) / 200, 0.7)
+  const scaleY = Math.max((userLength1.value || 200) / 200, 0.7)*/
+  return {
+    position: 'absolute',
+    top: `${finalScreenTop}px`,
+    left: `${finalScreenLeft}px`,
+    width: `${finalScreenWidth}px`,
+    height: `${finalScreenHeight}px`,
+    transform: `rotate(${frameRotate}deg)`,
+    transformOrigin: 'top left',
+    transition: 'width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease',
+    zIndex: 12,
+    /* transform: `rotate(${frameRotate}deg) scale(${1 / scaleX}, ${1 / scaleY})`,
+    width: `${frameW * screenK * scaleX * scaleX}px`,
+    height: `${frameH * screenK * scaleY * scaleY}px`,*/
+  }
+})
+/*
+const canvasContainerStyle = computed(() => {
+  // Вычисляем процентное положение проёма относительно оригинальной картинки из базы
+  const originalWidth = currentInterior.value?.width || 1107
+  const originalHeight = currentInterior.value?.height || 1620
+
+  const leftPercent = (originalFrameCoords.value.left / originalWidth) * 100
+  const topPercent = (originalFrameCoords.value.top / originalHeight) * 100
+
+  // Вычисляем, какую долю в процентах занимает рама от всей стены
+  const widthPercent = (574 / originalWidth) * 100
+
+  return {
+    position: 'absolute',
+    top: `${topPercent}%`,
+    left: `${leftPercent}%`,
+    width: `${widthPercent}%`,
+    height: 'auto', // Высота подстроится автоматически со всеми холстами
+    transform: 'none', // Больше никакой scale не нужен!
+    zIndex: 12,
+  }
+})*/
+
+// Датчик слежения за размерами картинки
+let ro = null
+
+onMounted(() => {
+  // Создаем датчик и прикрепляем к нему отчет entry
+  ro = new ResizeObserver((entries) => {
+    for (let entry of entries) {
+      // Браузер сам отправляет в entry.contentRect.width текущую ширину картинки на экране
+      currentImageWidth.value = entry.contentRect.width
+    }
+  })
+
+  // Если картинка успешно добавилась в HTML, официально включаем за ней слежку
+  if (mainImageRef.value) {
+    ro.observe(mainImageRef.value)
+  }
+})
+
+// Убираем датчик из памяти компьютера при закрытии страницы
+onUnmounted(() => {
+  if (ro) ro.disconnect()
+})
+// Функция для безопасной записи выбранного интерьера
+const selectInterior = async (interior) => {
+  currentInterior.value = interior
+  await nextTick()
+  renderAll()
+}
+const isHorizontalMode = computed(() => {
+  // Добавляем .value к каждой реактивной переменной
+  return !isSquare.value && Number(userWidth1.value || 0) > Number(userLength1.value || 0) * 1.15
 })
 </script>
 
@@ -823,7 +1787,7 @@ const totalPrice = computed(() => {
           <!-- Левая панель: багеты из БД -->
           <div class="double-frame-left">
             <div
-              v-for="frame in dbFrames"
+              v-for="frame in filteredInnerFrames"
               :key="frame.id"
               class="frame-sample-card"
               @click="applyInnerFrame(frame)"
@@ -863,6 +1827,205 @@ const totalPrice = computed(() => {
             </button>
           </div>
         </div>
+        <!-- ПЕРЕКЛЮЧАТЕЛЬ СЛОЕВ (1 ИЛИ 2) -->
+        <div class="pasportu_div" v-if="isMenuOpen">
+          <div class="layer-switcher" v-if="hasPaspartu">
+            <button
+              class="btn-option"
+              :class="{ active: paspartuLayers === 1 }"
+              @click="paspartuLayers = 1"
+            >
+              1 слой
+            </button>
+            <button
+              class="btn-option"
+              :class="{ active: paspartuLayers === 2 }"
+              @click="setTwoLayers"
+            >
+              2 слоя
+            </button>
+            <button
+              @click="closeAllPanels"
+              v-if="hasPaspartu"
+              style="
+                padding-bottom: 10px;
+                background: none;
+                border: none;
+                cursor: pointer;
+                margin-top: -5px;
+                margin-left: 70px;
+                display: flex;
+                align-items: center;
+              "
+              title="Скрыть настройки"
+            >
+              <svg
+                width="36"
+                height="36"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#000000"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <div class="div_toggle" v-if="hasPaspartu">
+            <!-- ТУМБЛЕР ДОБАВЛЕНИЯ КАНТА КАК КНОПКА -->
+            <label class="btn-option" :class="{ active: hasKant }">
+              <input type="checkbox" @click="toggleKant" />
+              <span>Добавить слип</span>
+            </label>
+          </div>
+
+          <!-- БЛОК РЕГУЛИРОВКИ РАЗМЕРОВ (sizes-block) -->
+          <div class="sizes-block" v-if="hasPaspartu">
+            <!-- Ползунок №1: Верхнее паспарту -->
+            <div class="input-group" v-if="hasPaspartu">
+              <input type="range" min="10" max="150" v-model="topPaspartuWidth" />
+              <input
+                type="number"
+                min="10"
+                max="150"
+                v-model.number="topPaspartuWidth"
+                class="custom-number-input"
+              />
+            </div>
+
+            <!-- Ползунок №2: Появляется ТОЛЬКО при 2 слоях и ЕСЛИ выключен кант -->
+            <div v-if="paspartuLayers === 2 && !hasKant" class="slider-row">
+              <label>Ширина нижнего паспарту (мм):</label>
+              <div class="input-group">
+                <input type="range" min="1" max="149" v-model.number="bottomPaspartuWidth" />
+                <input
+                  type="number"
+                  min="1"
+                  max="149"
+                  v-model.number="bottomPaspartuWidth"
+                  class="custom-number-input"
+                />
+              </div>
+            </div>
+
+            <!-- Фиксированная планка вместо ползунка: Если включен кант -->
+            <div v-if="hasKant" class="fixed-kant-row">
+              <p>
+                Ширина декоративного слипа:
+                <strong>{{ KANT_FIXED_WIDTH }} мм</strong> (фиксированная)
+              </p>
+            </div>
+          </div>
+          <!-- Выбор картона для верхнего слоя -->
+          <!-- Контейнер с горизонтальной прокруткой -->
+          <div class="paspartu-scroll-wrapper">
+            <div class="paspartu-grid-2rows" v-if="hasPaspartu">
+              <div v-for="item in paspartuList" :key="item.id" class="paspartu-grid-cell">
+                <button
+                  class="paspartu-slide-btn"
+                  :class="{ active: selectedTopPaspartu?.id === item.id }"
+                  @click="
+                    ((selectedTopPaspartu = selectedTopPaspartu?.id === item.id ? null : item),
+                    renderAll())
+                  "
+                >
+                  <img :src="item.image" :alt="item.name" />
+                  <span>{{ item.name }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- ЛИНИЯ-РАЗДЕЛИТЕЛЬ МЕЖДУ ТОВАРАМИ -->
+          <hr v-if="hasPaspartu && paspartuLayers === 2" class="product-separator" />
+          <!-- Сетка выбора канта (показывается только при включенном канте) -->
+          <div v-if="hasKant" class="paspartu-grid">
+            <h4>Текстура декоративного слипа</h4>
+            <button
+              v-for="kant in kantList"
+              :key="kant.id"
+              :class="{ active: selectedKant?.id === kant.id }"
+              @click="((selectedKant = selectedKant?.id === kant.id ? null : kant), renderAll())"
+            >
+              <img :src="kant.image" :alt="kant.name" />
+              <span>{{ kant.name }}</span>
+            </button>
+          </div>
+
+          <!-- Выбор картона для нижнего слоя (показывается только при 2 слоях и если выключен кант) -->
+
+          <!-- ДЛЯ НИЖНЕЙ ПЛАНКИ ПАСПАРТУ -->
+          <h4 v-if="hasPaspartu && paspartuLayers === 2 && !hasKant">Текстура нижнего паспарту</h4>
+
+          <div class="paspartu-scroll-wrapper">
+            <div class="paspartu-grid-2rows" v-if="hasPaspartu && paspartuLayers === 2 && !hasKant">
+              <!-- Оставляем v-for ТОЛЬКО здесь -->
+              <div v-for="item in paspartuList" :key="item.id" class="paspartu-grid-cell">
+                <!-- С кнопки <button> полностью УДАЛЯЕМ v-for="item in paspartuList" -->
+                <button
+                  class="paspartu-slide-btn"
+                  :class="{ active: selectedBottomPaspartu?.id === item.id }"
+                  @click="
+                    ((selectedBottomPaspartu =
+                      selectedBottomPaspartu?.id === item.id ? null : item),
+                    renderAll())
+                  "
+                >
+                  <img :src="item.image" :alt="item.name" />
+                  <span>{{ item.name }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Подменю с выбором типа стекла -->
+        <div v-if="isMainActive" class="sub-buttons">
+          <button
+            @click="selectGlass('regular')"
+            :class="['btn-sub', { active: selectedGlassType === 'regular' }]"
+          >
+            Стекло обычное ({{ priceRegular }} руб/м²)
+          </button>
+
+          <button
+            @click="selectGlass('antiglare')"
+            :class="['btn-sub', { active: selectedGlassType === 'antiglare' }]"
+          >
+            Стекло антиблик ({{ priceAntiglare }} руб/м²)
+          </button>
+          <button
+            @click="closeAllPanels"
+            v-if="isMainActive"
+            class="btn-close-glass"
+            style="
+              padding-bottom: 10px;
+              background: none;
+              border: none;
+              cursor: pointer;
+              margin: 15px auto 0;
+              width: 100%;
+            "
+            title="Скрыть настройки"
+          >
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#000000"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
         <div class="container7">
           <h2 class="visually-hidden">product card</h2>
@@ -872,48 +2035,127 @@ const totalPrice = computed(() => {
               <div class="card-content__top">
                 <div class="card-top">
                   <div class="card-top__left">
-                    <div class="card-slider">
+                    <div
+                      class="card-slider"
+                      :class="{
+                        'is-horizontal-column': isHorizontalMode && !currentInterior, // Выключаем боковой режим широкого конструктора при интерьере
+                      }"
+                    >
                       <div
                         class="card-slider__thumbs"
-                        :class="{ 'is-invisible': frameType === 'double' && isPanelOpen }"
+                        :class="{
+                          'is-square-shift': isSquare,
+                          'is-horizontal-bottom':
+                            !isSquare &&
+                            Number(userWidth1) > Number(userLength1) * 1.15 &&
+                            !currentInterior, // Оставляем нижний ряд только если интерьер ВЫКЛЮЧЕН
+                        }"
                       >
-                        <div class="card-slider__thumb">
-                          <img src="/images/card-photo small.png" alt="" />
-                        </div>
-                        <div class="card-slider__thumb">
-                          <img src="/images/card-photo small.png" alt="" />
-                        </div>
-                        <div class="card-slider__thumb">
-                          <img src="/images/card-photo small.png" alt="" />
-                        </div>
-                        <div class="card-slider__thumb">
-                          <img src="/images/card-photo small.png" alt="" />
-                        </div>
-                        <div class="card-slider__thumb">
-                          <img src="/images/card-photo small.png" alt="" />
+                        <!-- Кнопка показывается только если интерьер выбран -->
+                        <button
+                          v-if="currentInterior"
+                          @click="currentInterior = null"
+                          class="btn-reset-interior"
+                        >
+                          ✕ Сбросить интерьер
+                        </button>
+                        <div
+                          v-for="interior in interiorsList"
+                          :key="interior.id"
+                          class="card-slider__thumb"
+                          :class="{ 'is-active': currentInterior?.id === interior.id }"
+                          @click="
+                            currentInterior?.id === interior.id
+                              ? (currentInterior = null)
+                              : selectInterior(interior)
+                          "
+                          style="
+                            width: 80px;
+                            height: 100px;
+                            overflow: hidden;
+                            display: inline-block;
+                            cursor: pointer;
+                          "
+                        >
+                          <img
+                            :src="`${interior.image_url}?width=80&resize=contain`"
+                            alt="Интерьер"
+                            style="width: 100%; height: 100%; object-fit: cover"
+                          />
                         </div>
                       </div>
 
                       <div class="frame-constructor">
-                        <!-- Общий контейнер, задающий физический размер багета -->
-                        <!-- Вариант 1: Если вы используете независимые слои (функция renderAll) -->
+                        <!-- Внешний универсальный контейнер, который ВСЕГДА держит размер окна 574x759 -->
                         <div
                           class="canvas-container"
-                          style="position: relative; width: 574px; height: 759px"
+                          style="position: relative; height: 759px; overflow: hidden"
+                          :style="{
+                            width:
+                              !isSquare && userWidth1 > userLength1 * 1.15 && !currentInterior
+                                ? '677px'
+                                : '574px',
+                          }"
                         >
-                          <canvas
-                            id="photoCanvas"
-                            style="position: absolute; left: 0; top: 0; z-index: 1"
-                          ></canvas>
+                          <!-- Картинка интерьера на самом заднем плане, заполняющая всё окно -->
+                          <img
+                            v-if="currentInterior"
+                            ref="mainImageRef"
+                            :src="currentInterior.image_url"
+                            alt="Интерьер комнаты"
+                            class="main-image"
+                            style="
+                              position: absolute;
+                              left: 0;
+                              top: 0;
+                              width: 100%;
+                              height: 100%;
+                              object-fit: cover;
+                              z-index: 1;
+                            "
+                          />
 
-                          <canvas
-                            id="innerFrameCanvas"
-                            style="position: absolute; left: 0; top: 0; z-index: 2"
-                          ></canvas>
-                          <canvas
-                            id="outerFrameCanvas"
-                            style="position: absolute; left: 0; top: 0; z-index: 3"
-                          ></canvas>
+                          <!-- Внутренний контейнер, который динамически двигает и сжимает ТОЛЬКО холсты -->
+                          <div
+                            :style="
+                              currentInterior
+                                ? canvasContainerStyle
+                                : {
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                  }
+                            "
+                          >
+                            <canvas
+                              id="photoCanvas"
+                              style="position: absolute; left: 0; top: 0; z-index: 2"
+                            ></canvas>
+                            <canvas
+                              id="paspartuCanvas"
+                              style="position: absolute; left: 0; top: 0; z-index: 3"
+                            ></canvas>
+                            <canvas
+                              id="innerFrameCanvas"
+                              style="position: absolute; left: 0; top: 0; z-index: 4"
+                            ></canvas>
+                            <canvas
+                              id="outerFrameCanvas"
+                              style="position: absolute; left: 0; top: 0; z-index: 5"
+                            ></canvas>
+                            <canvas
+                              id="glassCanvas"
+                              style="
+                                position: absolute;
+                                left: 0;
+                                top: 0;
+                                z-index: 6;
+                                pointer-events: none;
+                              "
+                            ></canvas>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -980,36 +2222,96 @@ const totalPrice = computed(() => {
                         />
                       </label>
                       <div class="card-info__select size-select card-info__second-select">
-                        <p class="size-select__selected">Размер: <span>Выберите размер </span></p>
-
-                        <button class="btn-reset size-select__clear">
+                        <p class="size-select__selected">
+                          Размер:<span>{{ sizeText }}</span>
+                        </p>
+                        <form class="frame-form">
+                          <div class="fake-single-input">
+                            <input
+                              v-model.number="userWidth1"
+                              @change="validateSize('userWidth1')"
+                              title="ширина от 5 до 200 см"
+                              type="number"
+                              min="5"
+                              max="2000"
+                              placeholder="Ширина"
+                              required
+                              aria-label="Ширина в мм"
+                            />
+                            <span class="fix-x">×</span>
+                            <input
+                              v-model.number="userLength1"
+                              @change="validateSize('userLength1')"
+                              title="высота от 5 до 200 см"
+                              type="number"
+                              min="5"
+                              max="2000"
+                              placeholder="Высота"
+                              required
+                              aria-label="Высота в мм"
+                            />
+                          </div>
+                        </form>
+                        <button
+                          @click="clearSizes"
+                          type="button"
+                          class="btn-reset size-select__clear"
+                        >
                           <img src="/images/cross.png" alt="" />
 
                           очистить
                         </button>
                       </div>
                       <div class="toggle-container" role="radiogroup" aria-label="Выбор рамы">
+                        <!-- Кнопка: Одинарная рама -->
                         <button
                           class="toggle-btn"
                           data-value="single"
                           role="radio"
                           :aria-checked="frameType === 'single'"
                           :class="{ active: frameType === 'single' }"
-                          @click="selectFrameType('single')"
+                          @click="togglePanel('single')"
                         >
                           Одинарная рама
                         </button>
+
+                        <!-- Кнопка: Двойная рама -->
                         <button
                           class="toggle-btn"
                           data-value="double"
                           role="radio"
                           :aria-checked="frameType === 'double'"
                           :class="{ active: frameType === 'double' }"
-                          @click="selectFrameType('double')"
+                          @click="togglePanel('double')"
+                          :disabled="isDoubleFrameButtonDisabled"
+                          title="Двойную раму можно добавить если размер 2 рамы оставляет минимум 10 см для картины "
                         >
                           Двойная рама
                         </button>
                       </div>
+                      <!-- ГЛАВНЫЙ ТУМБЛЕР ПАСПАРТУ -->
+                      <!-- Исправленная кнопка паспарту (без .prevent) -->
+                      <button
+                        class="btn-option toggle"
+                        :class="{ active: isPaspartuActive }"
+                        @click="togglePanel('paspartu')"
+                        :disabled="isPaspartuDisabled"
+                        title="Ширина паспарту от 5 до 60 см, высота от 5 до 100 см"
+                      >
+                        Добавить паспарту
+                      </button>
+                      <div>
+                        <div class="calculator">
+                          <!-- Главная кнопка -->
+                          <button
+                            @click="togglePanel('glass')"
+                            :class="['btn-main', { active: isMainActive || selectedGlassType }]"
+                          >
+                            Добавить стекло
+                          </button>
+                        </div>
+                      </div>
+
                       <div class="card-info__first-select color-select">
                         <p class="color-select__selected">
                           Цвет: <span>{{ selectedColor || 'Не выбран' }}</span>
@@ -1390,6 +2692,501 @@ const totalPrice = computed(() => {
 </template>
 
 <style>
+/* Правильное горизонтальное положение миниатюр без поломок */
+.is-horizontal-column .card-slider__thumbs {
+  position: absolute !important;
+  left: 282px !important;
+  top: 700px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  width: 574px !important;
+  margin-top: 0 !important;
+  gap: 10px;
+  z-index: 10;
+}
+
+/* Изолируем вертикальную раму, чтобы thumbs не ломали холсты */
+:not(.is-horizontal-column) > .card-slider__thumbs {
+  position: static !important;
+  display: flex !important;
+  flex-direction: column !important; /* Возвращаем в левую колонку */
+  width: 90px !important;
+  margin-top: 60px !important;
+}
+.interior-canvas-container canvas {
+  object-fit: fill !important;
+}
+
+/* Желтая рамка толщиной 1px со всех четырех сторон для активной иконки */
+.card-slider__thumb.is-active {
+  outline: 4px solid #ffd700;
+}
+.btn-reset-interior {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background-color: #f1f1f1;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-reset-interior:hover {
+  background-color: #e2e2e2;
+}
+button:disabled {
+  background-color: #e0e0e0 !important;
+  color: #a0a0a0 !important;
+  border-color: #d0d0d0 !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+.fake-single-input {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: white;
+}
+
+/* При клике внутрь имитируем фокус на всем "поле" */
+.fake-single-input:focus-within {
+  border-color: black;
+}
+
+/* Сами инпуты делаем невидимыми внутри блока */
+.fake-single-input input {
+  width: 120px;
+  border: none;
+  outline: none;
+  padding: 0;
+  text-align: center;
+  font-size: 16px;
+}
+
+/* Фиксированный крестик, который нельзя стереть */
+.fake-single-input .fix-x {
+  color: #666;
+  font-size: 16px;
+  user-select: none;
+  padding: 0 4px;
+}
+/* Для Chrome, Safari, Edge и Opera */
+.fake-single-input input::-webkit-outer-spin-button,
+.fake-single-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Для Firefox */
+.fake-single-input input[type='number'] {
+  -moz-appearance: textfield;
+}
+/*
+.calculator {
+  max-width: 400px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}*/
+
+.calculator.input-group {
+  margin-bottom: 15px;
+}
+
+.calculator.input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.calculator.input-group input {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Базовый черный стиль для всех кнопок */
+
+.sub-buttons button {
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  padding: 10px 15px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  margin-bottom: 10px;
+  flex: 1;
+}
+
+/* Белый стиль, когда кнопка активирована */
+
+.sub-buttons button.active {
+  background-color: #000000;
+  color: #ffffff;
+  border: 2px solid #000000;
+}
+
+.sub-buttons {
+  display: flex;
+  margin-top: 300px;
+  padding-left: 2px;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: relative;
+}
+.sub-buttons button.btn-close-glass {
+  width: 100%; /* Растягивает крестик на всю строку, заставляя его упасть вниз */
+  flex: none; /* Отменяет свойство flex: 1, которое растягивало его в ряд с кнопками */
+  position: absolute;
+  top: 60px; /* Двигает кнопку вверх на 80 пикселей относительно её позиции */
+}
+.btn-main {
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #dfdfdf;
+  padding: 10px 15px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 285px;
+}
+.btn-main:hover {
+  border-color: #b5b5b5;
+  background-color: #f9f9f9;
+}
+.btn-main.active {
+  background-color: #000000;
+  color: #ffffff;
+  border: 2px solid #000000;
+}
+/* Картинка теперь занимает строго 70% высоты кнопки */
+.paspartu-slide-btn img {
+  width: 100% !important;
+  height: 65% !important;
+  object-fit: cover !important; /* Картинка масштабируется без искажений */
+  border-top-left-radius: 6px; /* Скругляем верхние углы картинки под кнопку */
+  border-top-right-radius: 6px;
+}
+
+/* Текст занимает оставшиеся 30% высоты кнопки */
+.paspartu-slide-btn span {
+  width: 100% !important;
+  height: 30% !important;
+  font-size: 11px !important; /* Компактный размер шрифта */
+  line-height: 1.1 !important; /* Плотный межстрочный интервал */
+  display: flex !important;
+  align-items: center !important; /* Центруем текст по вертикале */
+  justify-content: center !important; /* Центруем текст по горизонтале */
+  text-align: center !important;
+  padding: 2px 4px !important; /* Небольшие внутренние поля */
+  box-sizing: border-box !important;
+}
+/* Общий контейнер, включающий скролл */
+.paspartu-scroll-wrapper {
+  width: 100%;
+  max-width: 450px;
+  overflow-x: auto; /* Включаем горизонтальную прокрутку */
+  overflow-y: hidden; /* Прячем вертикальную прокрутку */
+  padding-bottom: 10px;
+  margin-top: 10px;
+}
+
+/* Двухрядная сетка на чистом CSS */
+.paspartu-grid-2rows {
+  display: grid !important;
+  grid-template-rows: repeat(2, 90px); /* Строго 2 ряда по 90px */
+  grid-auto-flow: column; /* Заполнение по колонкам (слева направо) */
+  grid-auto-columns: calc((100% - 40px) / 4); /* Ровно 5 ячеек в видимой области экрана */
+  gap: 10px; /* Отступы между ячейками */
+}
+
+/* Каждая ячейка сохраняет пропорции */
+.paspartu-grid-cell {
+  width: 100%;
+  height: 100%;
+}
+
+/* Оформление кнопок-ячеек */
+.paspartu-slide-btn {
+  width: 100%;
+  height: 100%;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.paspartu-slide-btn.active {
+  border-color: #007aff;
+  background-color: #f0f7ff;
+}
+
+/* Аккуратный тонкий скроллбару */
+.paspartu-scroll-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+.paspartu-scroll-wrapper::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.paspartu-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+/* Оформление кнопок-ячеек внутри слайдов */
+.paspartu-slide-btn {
+  width: 100%;
+  height: 90px; /* Фиксированная высота одной ячейки */
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.paspartu-slide-btn.active {
+  border-color: #007aff; /* Цвет рамки активной ячейки */
+}
+
+/* Красивое оформление полосы прокрутки для современных браузеров */
+.scroll-container::-webkit-scrollbar {
+  height: 6px; /* Делаем полосу тонкой и аккуратной */
+}
+.scroll-container::-webkit-scrollbar-track {
+  background: #282424;
+  border-radius: 4px;
+}
+.scroll-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+.scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+/* Базовые стили для поля ввода */
+.custom-number-input {
+  width: 300px;
+  height: 10px;
+  padding: 10px 0; /* Компенсируем высоту 10px для удобного отображения текста */
+  text-align: center; /* Размещает цифры ровно посередине */
+  font-size: 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  box-sizing: content-box; /* Гарантирует высоту контента ровно 10px */
+  margin-top: 10px;
+}
+
+/* Убираем стрелочки справа в Chrome, Safari, Edge, Opera */
+.custom-number-input::-webkit-outer-spin-button,
+.custom-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Убираем стрелочки справа в Firefox */
+.custom-number-input[type='number'] {
+  -moz-appearance: textfield;
+}
+/*паспорту*/
+/* Делаем блок паспарту всплывающей боковой панелью */
+.pasportu_div {
+  width: 300px; /* Фиксированная ширина панели сбоку */
+  flex-shrink: 0; /* Запрещает блоку сжиматься, если раме тесно */
+  background: #ffffff;
+  margin-top: 260px;
+  margin-left: 1px;
+}
+
+/* Базовый класс для всех интерактивных кнопок-опций */
+.btn-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #333333;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  margin-bottom: 10px;
+  width: 285px;
+}
+
+/* Скрываем стандартный системный квадрат чекбокса внутри кнопки */
+.btn-option input[type='checkbox'] {
+  display: none;
+}
+
+/* Эффект при наведении на любую кнопку */
+.btn-option:hover {
+  border-color: #b5b5b5;
+  background-color: #f9f9f9;
+}
+
+/* Активное (нажатое) состояние кнопки */
+.btn-option.active {
+  border-color: #000000;
+  background-color: #000000;
+  color: #ffffff; /* Белый текст на черном фоне */
+}
+
+/* Контейнер для кнопок переключения слоев */
+.layer-switcher {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.div_toggle {
+  margin-top: 20px;
+}
+.toggle {
+  margin-top: 20px;
+}
+/* --- ЧЕРНЫЕ ЧЕКБОКСЫ (ГАЛОЧКИ) --- */
+.toggle input[type='checkbox'] {
+  accent-color: #000000; /* Перекрашивает стандартную галочку браузера в черный цвет */
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* --- КРАСИВЫЕ ПОЛЗУНКИ (RANGE SLIDERS) --- */
+.sizes-block input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  outline: none;
+}
+
+/* Круглый бегунок ползунка */
+.sizes-block input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #000000; /* Черный бегунок */
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.sizes-block input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.2); /* Легкое увеличение при наведении */
+}
+
+/* --- СЕТКА КНОПОК ПАСПАРТУ --- */
+.paspartu-grid {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0 20px 0;
+  flex-wrap: wrap;
+  max-width: 450px; /* Контролирует ширину блока с картоном */
+}
+
+/* Стилизация кнопок-текстур */
+.paspartu-grid button {
+  width: 90px;
+  height: auto;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+  padding: 6px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.paspartu-grid button:hover {
+  border-color: #b5b5b5;
+}
+
+/* Активное состояние выбранной текстуры */
+.paspartu-grid button.active {
+  border-color: #000000; /* Жирная черная рамка */
+  transform: translateY(-2px); /* Эффект приподнимания */
+}
+
+/* Картинка внутри кнопки */
+.paspartu-grid button img {
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+/* Текст под картинкой картона */
+.paspartu-grid button span {
+  display: block;
+  font-size: 11px;
+  text-align: center;
+  color: #333333;
+  line-height: 1.2;
+}
+
+/* --- СТИЛИ ДЛЯ ЛИНИИ И ПЛАНКИ КАНТА --- */
+.fixed-kant-row {
+  background-color: #f9f9f9;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.fixed-kant-row p {
+  margin: 0;
+  font-size: 14px;
+  color: #333333;
+}
+
+/* Тонкая линия-разделитель между товарами */
+.product-separator {
+  border: 0;
+  height: 1px;
+  background-color: #e0e0e0;
+  margin: 30px 0;
+}
+
+/* Состояние активной выбранной текстуры */
+.paspartu-grid button.active {
+  border-color: #000; /* Черная рамка вокруг выбранного картона */
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+/*паспорту*/
 /* CSS-стили для смены цвета при наведении */
 .close-btn {
   position: absolute; /* Позволяет свободно двигать крестик внутри блока */
@@ -1424,7 +3221,31 @@ const totalPrice = computed(() => {
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
   padding: 20px;
+}
+/* Стили для интерьера, чтобы он намертво встал поверх рамы */
+.interior-container.is-active-interior {
+  position: absolute;
+  top: 20px; /* Учитываем padding родителя */
+  left: 20px;
+  width: 574px;
+  height: 759px;
+  z-index: 10; /* Помещает интерьер на самый верхний слой */
+  background: #fff;
+  overflow: hidden;
+}
+
+.main-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Защищает картинку интерьера от искажения размеров */
+  display: block;
+}
+
+.interior-canvas-container {
+  position: absolute;
+  /* Координаты маленькой рамы внутри интерьера прилетят из js через :style */
 }
 
 /* Контейнер-бутерброд */
@@ -1500,6 +3321,7 @@ const totalPrice = computed(() => {
 .double-frame-constructor {
   display: flex;
   justify-content: space-between;
+  flex-shrink: 0 !important;
   margin-top: 17%;
   gap: 15px;
   float: left;
@@ -1598,12 +3420,14 @@ const totalPrice = computed(() => {
 /*двойная рама*/
 
 .toggle-container {
-  display: inline-flex;
+  display: flex;
   background-color: #ff4405;
   border-radius: 8px;
   padding: 4px;
   border: 1px solid #dee2e6;
   margin-bottom: 15px;
+  height: 44px;
+  width: 280px;
 }
 
 .toggle-btn {
@@ -1720,6 +3544,8 @@ const totalPrice = computed(() => {
   max-width: 1220px;
   margin: 0px auto;
   padding: 0px 10px;
+  flex-shrink: 1; /* Разрешает картине немного уменьшаться, уступая место панели */
+  min-width: 0; /* Корректно активирует сжатие флекс-элемента в браузере */
 }
 
 .visually-hidden {
@@ -1733,6 +3559,14 @@ const totalPrice = computed(() => {
   clip-path: inset(100%);
   clip: rect(0 0 0 0);
   overflow: hidden;
+}
+.card {
+  display: flex !important;
+  flex-direction: row !important; /* Выстраивает блоки строго в один горизонтальный ряд */
+  align-items: flex-start !important; /* Выравнивает их по верхнему краю друг с другом */
+  flex-wrap: nowrap !important; /* Запрещает блокам выдавливать друг друга на новые строки */
+  overflow: hidden; /* Прячет вылезающие элементы внутри карточки */
+  max-width: 100%; /* Запрещает карточке становиться шире экрана */
 }
 .card-container {
   padding-top: 240px;
@@ -1756,8 +3590,25 @@ const totalPrice = computed(() => {
 }
 .card-slider__thumbs {
   margin-top: 60px; /* Подберите нужный отступ в пикселях */
+  transition: all 0.3s ease;
 }
-.card-slider__thumb {
+/* Поднимаем блок вверх на 20-30 пикселей, когда рама становится квадратной */
+.card-slider__thumbs.is-square-shift {
+  margin-top: 45px !important;
+  transition: margin-top 0.3s ease;
+}
+/* Стандартное нижнее положение для горизонтальной рамы без интерьера */
+/*
+.card-slider__thumbs.is-horizontal-bottom {
+  position: absolute !important;
+  left: 0 !important;
+  top: 800px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100% !important;
+}*/
+
+* При активации интерьера миниатюры уезжают вправо на свободное место */ .card-slider__thumb {
   cursor: pointer;
 }
 
@@ -1765,6 +3616,8 @@ const totalPrice = computed(() => {
   padding-top: 10px;
   padding-top: 60px;
   padding-left: 10.7%;
+  max-width: 33.3vw !important;
+  flex-shrink: 0 !important; /* Запрещает элементам внутри сжиматься и деформироваться */
 }
 .card-info__prop {
   padding-left: 19px;
@@ -1919,7 +3772,8 @@ const totalPrice = computed(() => {
   color: rgb(21, 21, 21);
 }
 .size-select__clear {
-  display: inline-block;
+  display: block;
+  margin-top: 10px;
   color: rgb(210, 66, 66);
   font-size: 10px;
   font-weight: 700;
