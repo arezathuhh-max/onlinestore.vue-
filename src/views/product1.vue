@@ -4,11 +4,16 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import '@/assets/main.css'
 import 'swiper/css/pagination'
 import Swiper from 'swiper'
+import { bus } from '../views/bus.js'
+
+import { supabase } from '../router/supabase.js'
 import { interiorsList, loadInteriors } from '../assets/interiors.js' // укажите ваш точный путь к файлу
 
 import { useRoute } from 'vue-router' // Импортируем для работы с URL
 import { products, loadProducts } from '@/productsData.js'
-const isPaspartuActive = ref(false) // Цвет кнопки
+import { useCartStore } from '../pinia.js'
+const isPaspartuActive = ref(false)
+// Цвет кнопки
 const hasPaspartu = computed(() => isPaspartuActive.value)
 
 const isMenuOpen = ref(false) // Видимость меню
@@ -818,29 +823,21 @@ const renderCanvas = () => {
 function renderAll() {
   if (!currentProduct.value || !currentProduct.value.id) return
 
-  // Принудительно приводим к числам, чтобы избежать текстового сравнения строк
   const w1 = Number(userWidth1.value || 0)
   const l1 = Number(userLength1.value || 0)
 
-  // ИСПОЛЬЗУЕМ ЧИСЛА (w1 и l1) вместо строк (userWidth1.value)
-  const isHorizontalAndHasInterior = !isSquare.value && w1 > l1 * 1.15 && currentInterior.value
-
-  // Вычисляем размеры canvas с учетом горизонтальной рамы в интерьере
+  // Вычисляем размеры canvas на основе квадратного и горизонтального режимов
   const canvasH = isSquare.value
-    ? 600
-    : isHorizontalAndHasInterior
-      ? 754 // Исправлено: горизонтальная рама в интерьере должна быть 400 в высоту
+    ? currentInterior.value
+      ? 759
+      : 600 // Если без интерьера — строго 574 для ровного квадрата
+    : currentInterior.value && !isSquare.value && w1 > l1 * 1.15
+      ? 754
       : w1 > l1 * 1.15
         ? 400
         : 759
 
-  const canvasW = isSquare.value
-    ? 574
-    : isHorizontalAndHasInterior
-      ? 677 // Исправлено: горизонтальная рама в интерьере должна быть 677 в ширину
-      : w1 > l1 * 1.15
-        ? 677
-        : 574
+  const canvasW = isSquare.value ? 574 : w1 > l1 * 1.15 ? 677 : 574
 
   const outerW = 60
   const innerW = 60
@@ -1138,7 +1135,7 @@ function drawPhotoLayer(canvasId, imgUrl, frameW, frameH) {
   }
 }
 
-const isPanelOpen = ref(true) // По умолчанию панель отображается
+const isPanelOpen = ref(false) // По умолчанию панель отображается
 
 const selectedBottomPaspartuPrice = ref(null)
 
@@ -1148,17 +1145,17 @@ const totalPrice = computed(() => {
   const innerW = Number(selectedInnerFrame.value?.frame_width || 10)
   const slipW = Number(5)
 
-  let basePrice = Number(currentProduct.value?.price || 0)
-  if (selectedColor.value) {
-    basePrice += Number(currentProduct.value?.paint_price || 0)
-  }
+  // Чистая базовая цена за 1 метр багета (без покраски на этом шаге)
+  const basePrice = Number(currentProduct.value?.price || 0)
 
   // 1. Проверяем ввод размеров пользователем в см
   const hasValidSizes = userWidth1.value > 0 && userLength1.value > 0
 
-  // Если поля пустые, сразу возвращаем только чистую базовую цену за 1 метр багета
+  // Если поля пустые, возвращаем базовую цену за метр. Если выбран цвет — плюсуем покраску
   if (!hasValidSizes) {
-    return Number(Number(basePrice || 0).toFixed(2))
+    const staticPrice =
+      basePrice + (selectedColor.value ? Number(currentProduct.value?.paint_price || 0) : 0)
+    return Number(staticPrice.toFixed(2))
   }
 
   // Если размеры валидны, запускаем полный расчёт
@@ -1169,7 +1166,7 @@ const totalPrice = computed(() => {
   const outerLineM = (w1 * 2 + l1 * 2 + outerW * 8) / 100
   let price = outerLineM * basePrice
 
-  // Добавляем покраску внешней рамы
+  // ИСПРАВЛЕНО: Добавляем фиксированную цену покраски ОДИН раз к стоимости готовой рамы
   if (selectedColor.value) {
     price += Number(currentProduct.value?.paint_price || 0)
   }
@@ -1208,18 +1205,17 @@ const totalPrice = computed(() => {
     glassL = currentL - outerW * 2
   }
 
-  // 3. РАСЧЁТ ПАСПАРТУ И СЛИПА (Входные данные ширины полей из ползунков переводим в см, если они в мм)
+  // 3. РАСЧЁТ ПАСПАРТУ И СЛИПА
   if (isPaspartuActive.value && currentW > 10 && currentL > 10) {
-    // Предполагаем, что ползунок topPaspartuWidth даёт мм (например 50мм), делим на 10 для см
     const topOffsetCm = Number(topPaspartuWidth.value || 0) / 10
 
-    // Верхний слой паспарту (площадь внешнего листа картона в кв.м)
+    // Верхний слой паспарту
     if (selectedTopPaspartu.value?.price) {
       const areaTop = ((currentW + topOffsetCm * 2) / 100) * ((currentL + topOffsetCm * 2) / 100)
       price += areaTop * Number(selectedTopPaspartu.value.price)
     }
 
-    // Нижний слой паспарту (если выбрано 2 слоя)
+    // Нижний слой паспарту
     if (paspartuLayers.value === 2 && selectedBottomPaspartu.value?.price) {
       const bottomOffsetCm = Number(bottomPaspartuWidth.value || 0) / 10
       const areaBottom =
@@ -1227,7 +1223,7 @@ const totalPrice = computed(() => {
       price += areaBottom * Number(selectedBottomPaspartu.value.price)
     }
 
-    // Деревянный кант-слип (по погонной длине рамки канта в метрах)
+    // Деревянный кант-слип
     if (hasKant.value && selectedKant.value?.price) {
       const windowW = currentW - topOffsetCm * 2
       const windowL = currentL - topOffsetCm * 2
@@ -1239,7 +1235,7 @@ const totalPrice = computed(() => {
     }
   }
 
-  // 4. ИСПРАВЛЕННЫЙ РАСЧЁТ СТЕКЛА (Считается по проёму рам, без вычета паспарту и слипа)
+  // 4. РАСЧЁТ СТЕКЛА
   if (selectedGlassType.value && glassW > 5 && glassL > 5) {
     const areaGlass = (glassW / 100) * (glassL / 100)
     const glassPricePerMeter =
@@ -1247,7 +1243,7 @@ const totalPrice = computed(() => {
     price += areaGlass * glassPricePerMeter
   }
 
-  return Number(price.toFixed(2))
+  return Number((price * quantity.value).toFixed(2))
 })
 // 1. Состояние тумблеров и переключателей
 /*const hasPaspartu = ref(false)*/ // Тумблер [ Добавить паспарту ]
@@ -1462,45 +1458,56 @@ const glassPrice = computed(() => {
   return Number(glassCost.toFixed(2))
 })
 const togglePanel = (panelName) => {
+  // Перед переключением проверяем: если закрываем двойную раму без выбора багета — сбрасываем на одинарную
+  if (panelName !== 'double' && !selectedInnerFrame.value) {
+    frameType.value = 'single'
+  }
+  // Если закрываем паспарту, а цвета не выбраны — полностью деактивируем его
+  if (
+    panelName !== 'paspartu' &&
+    !selectedTopPaspartu.value &&
+    !selectedBottomPaspartu.value &&
+    !selectedKant.value
+  ) {
+    isPaspartuActive.value = false
+  }
+
   // 1. Управление ОДИНАРНОЙ и ДВОЙНОЙ рамой
   if (panelName === 'single' || panelName === 'double') {
-    frameType.value = panelName // Записываем 'single' или 'double'
+    frameType.value = panelName
 
     if (panelName === 'double') {
       isPanelOpen.value = true
-      isMenuOpen.value = false // Закрываем паспарту
-      isMainActive.value = false // Закрываем стекло
+      isMenuOpen.value = false
+      isMainActive.value = false
     } else {
       isPanelOpen.value = false
-      selectedInnerFrame.value = null // Сброс данных внутренней рамы
+      selectedInnerFrame.value = null
       innerFrameColor.value = ''
     }
   }
 
   // 2. Управление ПАСПАРТУ
   else if (panelName === 'paspartu') {
-    isPaspartuActive.value = !isPaspartuActive.value // Переключаем показ паспарту
+    isPaspartuActive.value = !isPaspartuActive.value
 
     if (isPaspartuActive.value) {
-      isPanelOpen.value = false // Закрываем раму
-      isMainActive.value = false // Закрываем стекло
+      isPanelOpen.value = false
+      isMainActive.value = false
     } else {
-      // Полный сброс паспарту и канта при повторном клике
       selectedTopPaspartu.value = null
       selectedBottomPaspartu.value = null
-      hasKant.value = false // Отключаем кант
-      selectedKant.value = null // Очищаем выбранный кант
+      hasKant.value = false
+      selectedKant.value = null
     }
   }
 
   // 3. Управление СТЕКЛОМ
   else if (panelName === 'glass') {
-    // Если стекло уже выбрано, второй клик полностью удаляет его
     if (selectedGlassType.value) {
       selectedGlassType.value = ''
       isMainActive.value = false
     } else {
-      // Если не выбрано, просто открываем панель (не трогая паспарту!)
       isMainActive.value = !isMainActive.value
       if (isMainActive.value) {
         isPanelOpen.value = false
@@ -1508,12 +1515,17 @@ const togglePanel = (panelName) => {
       }
     }
   }
-  renderAll() // Перерисовываем холст после каждого изменения
+  renderAll()
 }
 const closeAllPanels = () => {
   isPanelOpen.value = false
-  isMenuOpen.value = false // Прячет панель паспарту, сохраняя его на холсте
+  isMenuOpen.value = false
   isMainActive.value = false
+  isPaspartuActive.value = false // ДОБАВИТЬ ЭТУ СТРОКУ
+  // Если вторая рама не выбрана, сбрасываем кнопку на одинарную
+  if (!selectedInnerFrame.value) {
+    frameType.value = 'single'
+  }
 }
 const sizeText = computed(() => {
   // Если оба поля полностью стерты (равны 0 или пустые), просим ввести размеры
@@ -1633,26 +1645,6 @@ const checkSizeLimits = () => {
 const mainImageRef = ref(null)
 const currentInterior = ref(null) // Сюда прилетит текущая комната из Supabase
 
-// Исходные координаты проема рамы на оригинальной большой картинке из БД
-const originalFrameCoords = computed(() => {
-  return {
-    top: currentInterior.value?.frame_top || 0,
-    left: currentInterior.value?.frame_left || 0,
-  }
-})
-
-// Размеры оригинальной картинки из базы данных для расчета пропорций
-const originalImageWidth = computed(() => currentInterior.value?.width || 1107)
-
-// Текущая реальная ширина картинки на экране (меняется датчиком ResizeObserver)
-const currentImageWidth = ref(0)
-
-// Коэффициент сжатия: во сколько раз картинка на экране меньше, чем её оригинал в БД
-const k = computed(() => {
-  if (!currentImageWidth.value) return 1
-  return originalImageWidth.value / currentImageWidth.value
-})
-
 // ДИНАМИЧЕСКИЕ СТИЛИ ДЛЯ ТОЧНОГО СДВИГА И МАСШТАБИРОВАНИЯ РАМЫ НА СТЕНЕ
 /*
 const canvasContainerStyle = computed(() => {
@@ -1673,50 +1665,122 @@ const canvasContainerStyle = computed(() => {
 })*/
 
 const canvasContainerStyle = computed(() => {
-  // НОВЫЙ БЛОК: Если рама горизонтальная И выбран интерьер — возвращаем стандартные базовые размеры конструктора
-
-  // 1. Загружаем точные оригинальные размеры интерьера и проёма из таблицы Supabase
+  // 1. Загружаем оригинальные координаты проёма из базы данных
   const originalWidth = currentInterior.value?.width || 1107
-  const frameW = currentInterior.value?.frame_width || 400
-  const frameH = currentInterior.value?.frame_height || 500
   const frameTop = currentInterior.value?.frame_top || 0
   const frameLeft = currentInterior.value?.frame_left || 0
-  const frameRotate = currentInterior.value?.frame_rotation || 0
 
-  // 2. Вычисляем коэффициенты уменьшения для обеих сторон отдельно (БЕЗ Math.min)
-  // Math.max защищает каждую сторону от сжатия меньше 30% от проема стены
-  const widthScale = Math.max((userWidth1.value || 200) / 200, 0.5)
-  const heightScale = Math.max((userLength1.value || 200) / 200, 0.5)
+  // 2. Рассчитываем динамическую ширину контейнера интерьера на экране (для адаптива)
+  const isMobile = window.innerWidth <= 768
+  const currentContainerWidth = isMobile ? window.innerWidth * 0.95 : 575 // На мобильных — 95% экрана, на ПК — 575px
 
-  // 3. Находим масштаб экрана (текущий экран / оригинал из базы)
-  const screenK = currentImageWidth.value
-    ? currentImageWidth.value / originalWidth
-    : 574 / originalWidth
+  // 3. Коэффициент адаптивности самого интерьера (текущий экран / оригинал)
+  const screenK = currentContainerWidth / originalWidth
 
-  // 4. Меняем размеры независимо: высота вытянется на 200, а ширина сожмется до 10
-  const finalScreenWidth = frameW * widthScale * screenK
-  const finalScreenHeight = frameH * heightScale * screenK
+  // 4. Коэффициент уменьшения жестких пикселей для мобильных (пропорция от базовых 575px)
+  const mobileScale = currentContainerWidth / 575
 
-  // 5. Координаты железно привязаны к исходной верхней левой точке проема
+  // 5. Создаем переменные для жестких базовых размеров рамы
+  let finalScreenWidth = 0
+  let finalScreenHeight = 0
+
+  const w = Number(userWidth1.value || 0)
+  const l = Number(userLength1.value || 0)
+
+  // 6. Задаем точные пиксели для ПК, которые автоматически умножаются на mobileScale для мобильных
+  if (w > 0 && l > 0 && currentInterior.value) {
+    const id = currentInterior.value.id
+
+    if (w === l) {
+      if (id === 1) {
+        finalScreenWidth = 200
+        finalScreenHeight = 200
+      } else if (id === 2) {
+        finalScreenWidth = 200
+        finalScreenHeight = 200
+      } else if (id === 3) {
+        finalScreenWidth = 220
+        finalScreenHeight = 220
+      } else if (id === 4) {
+        finalScreenWidth = 400
+        finalScreenHeight = 400
+      } else if (id === 5) {
+        finalScreenWidth = 248
+        finalScreenHeight = 220
+      }
+    } else if (w > l) {
+      if (id === 1) {
+        finalScreenWidth = 325
+        finalScreenHeight = 180
+      } else if (id === 2) {
+        finalScreenWidth = 500
+        finalScreenHeight = 260
+      } else if (id === 3) {
+        finalScreenWidth = 500
+        finalScreenHeight = 230
+      } else if (id === 4) {
+        finalScreenWidth = 525
+        finalScreenHeight = 230
+      } else if (id === 5) {
+        finalScreenWidth = 250
+        finalScreenHeight = 100
+      }
+    } else if (w < l) {
+      if (id === 1) {
+        finalScreenWidth = 230
+        finalScreenHeight = 300
+      } else if (id === 2) {
+        finalScreenWidth = 220
+        finalScreenHeight = 290
+      } else if (id === 3) {
+        finalScreenWidth = 200
+        finalScreenHeight = 230
+      } else if (id === 4) {
+        finalScreenWidth = 300
+        finalScreenHeight = 400
+      } else if (id === 5) {
+        finalScreenWidth = 240
+        finalScreenHeight = 330
+      }
+    } else {
+      if (id === 1) {
+        finalScreenWidth = 30
+        finalScreenHeight = 45
+      } else if (id === 2) {
+        finalScreenWidth = 350
+        finalScreenHeight = 500
+      } else {
+        finalScreenWidth = 320
+        finalScreenHeight = 480
+      }
+    }
+  }
+
+  // 7. Применяем масштабирование: координаты зависят от screenK, а фиксированные размеры — от mobileScale
   const finalScreenLeft = frameLeft * screenK
   const finalScreenTop = frameTop * screenK
-  /* const scaleX = Math.max((userWidth1.value || 200) / 200, 0.7)
-  const scaleY = Math.max((userLength1.value || 200) / 200, 0.7)*/
+  const adaptiveWidth = finalScreenWidth * mobileScale
+  const adaptiveHeight = finalScreenHeight * mobileScale
+
   return {
     position: 'absolute',
     top: `${finalScreenTop}px`,
     left: `${finalScreenLeft}px`,
-    width: `${finalScreenWidth}px`,
-    height: `${finalScreenHeight}px`,
-    transform: `rotate(${frameRotate}deg)`,
-    transformOrigin: 'top left',
+    width: `${adaptiveWidth}px`,
+    height: `${adaptiveHeight}px`,
+    transformOrigin: 'top left', // Возвращено по вашему запросу
     transition: 'width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease',
     zIndex: 12,
-    /* transform: `rotate(${frameRotate}deg) scale(${1 / scaleX}, ${1 / scaleY})`,
-    width: `${frameW * screenK * scaleX * scaleX}px`,
-    height: `${frameH * screenK * scaleY * scaleY}px`,*/
   }
 })
+
+watch(
+  [userWidth1, userLength1, currentInterior],
+  () => {
+    renderAll()
+  },
+  { deep: true, immediate: true },
+)
 /*
 const canvasContainerStyle = computed(() => {
   // Вычисляем процентное положение проёма относительно оригинальной картинки из базы
@@ -1740,28 +1804,6 @@ const canvasContainerStyle = computed(() => {
   }
 })*/
 
-// Датчик слежения за размерами картинки
-let ro = null
-
-onMounted(() => {
-  // Создаем датчик и прикрепляем к нему отчет entry
-  ro = new ResizeObserver((entries) => {
-    for (let entry of entries) {
-      // Браузер сам отправляет в entry.contentRect.width текущую ширину картинки на экране
-      currentImageWidth.value = entry.contentRect.width
-    }
-  })
-
-  // Если картинка успешно добавилась в HTML, официально включаем за ней слежку
-  if (mainImageRef.value) {
-    ro.observe(mainImageRef.value)
-  }
-})
-
-// Убираем датчик из памяти компьютера при закрытии страницы
-onUnmounted(() => {
-  if (ro) ro.disconnect()
-})
 // Функция для безопасной записи выбранного интерьера
 const selectInterior = async (interior) => {
   currentInterior.value = interior
@@ -1772,6 +1814,303 @@ const isHorizontalMode = computed(() => {
   // Добавляем .value к каждой реактивной переменной
   return !isSquare.value && Number(userWidth1.value || 0) > Number(userLength1.value || 0) * 1.15
 })
+const isHorizontalAndNoInterior = computed(() => {
+  const w1 = Number(userWidth1.value || 0)
+  const l1 = Number(userLength1.value || 0)
+  return !isSquare.value && w1 > l1 * 1.15 && !currentInterior.value
+})
+/*
+const quantity = ref(1)
+
+function increaseQty() {
+  if (quantity.value < 500) quantity.value++
+}
+
+function decreaseQty() {
+  if (quantity.value > 1) quantity.value--
+}
+*/
+const orderReceipt = computed(() => {
+  const w1 = Number(userWidth1.value || 0)
+  const l1 = Number(userLength1.value || 0)
+
+  if (w1 <= 0 || l1 <= 0) return 'Укажите размеры для расчета'
+
+  // Ширина элементов в см
+  const outerW = Number(currentProduct.value?.frame_width || 5)
+  const innerW = Number(selectedInnerFrame.value?.frame_width || 10)
+  const slipW = Number(5)
+
+  // Исходная цена внешней рамы за метр
+  let basePrice = Number(currentProduct.value?.price || 0)
+  if (selectedColor.value) basePrice += Number(currentProduct.value?.paint_price || 0)
+
+  let textLines = []
+
+  // 1. РАСЧЕТ ОСНОВНОЙ ВНЕШНЕЙ РАМЫ
+  const outerLineM = (w1 * 2 + l1 * 2 + outerW * 8) / 100
+  let outerPrice = outerLineM * basePrice
+  if (selectedColor.value) outerPrice += Number(currentProduct.value?.paint_price || 0)
+
+  const outerName = currentProduct.value?.name || 'Основная'
+  textLines.push(
+    `🎨 Рама "${outerName}": ${w1}x${l1} см (Багет: ${outerW} см) — ${(outerPrice * quantity.value).toFixed(2)} BYN`,
+  )
+
+  // Копии переменных для пошагового расчета внутренних проемов
+  let currentW = w1
+  let currentL = l1
+  let glassW = w1
+  let glassL = l1
+
+  // 2. РАСЧЕТ ВТОРОЙ (ВНУТРЕННЕЙ) РАМЫ
+  if (frameType.value === 'double') {
+    currentW = currentW - outerW * 2
+    currentL = currentL - outerW * 2
+
+    if (selectedInnerFrame.value?.price && currentW > 4 && currentL > 4) {
+      const innerLineM = (currentW * 2 + currentL * 2 + innerW * 8) / 100
+      let innerPrice = innerLineM * Number(selectedInnerFrame.value.price)
+      if (innerFrameColor.value) innerPrice += 50
+
+      const innerName = selectedInnerFrame.value?.name || 'Внутренняя'
+      textLines.push(
+        `🖼️ Вторая рама "${innerName}": внешний размер ${currentW}x${currentL} см (Багет: ${innerW} см) — ${(innerPrice * quantity.value).toFixed(2)} BYN`,
+      )
+    }
+
+    currentW = currentW - innerW * 2
+    currentL = currentL - innerW * 2
+    glassW = currentW
+    glassL = currentL
+  } else {
+    glassW = currentW - outerW * 2
+    glassL = currentL - outerW * 2
+  }
+
+  // 3. РАСЧЕТ ПАСПАРТУ И СЛИПА
+  if (isPaspartuActive.value && currentW > 10 && currentL > 10) {
+    const topOffsetCm = Number(topPaspartuWidth.value || 0) / 10
+    let paspartuPrice = 0
+
+    if (selectedTopPaspartu.value?.price) {
+      const areaTop = ((currentW + topOffsetCm * 2) / 100) * ((currentL + topOffsetCm * 2) / 100)
+      paspartuPrice += areaTop * Number(selectedTopPaspartu.value.price)
+    }
+
+    if (paspartuLayers.value === 2 && selectedBottomPaspartu.value?.price) {
+      const bottomOffsetCm = Number(bottomPaspartuWidth.value || 0) / 10
+      const areaBottom =
+        ((currentW + bottomOffsetCm * 2) / 100) * ((currentL + bottomOffsetCm * 2) / 100)
+      paspartuPrice += areaBottom * Number(selectedBottomPaspartu.value.price)
+    }
+
+    const windowW = currentW - topOffsetCm * 2
+    const windowL = currentL - topOffsetCm * 2
+
+    if (paspartuPrice > 0) {
+      const topName = selectedTopPaspartu.value?.name || 'Верхнее'
+      const bottomName =
+        paspartuLayers.value === 2 ? ` + "${selectedBottomPaspartu.value?.name || 'Нижнее'}"` : ''
+      textLines.push(
+        `📐 Паспарту "${topName}"${bottomName}: внешний размер ${currentW}x${currentL} см, вырез ${windowW}x${windowL} см — ${(paspartuPrice * quantity.value).toFixed(2)} BYN`,
+      )
+    }
+
+    // Деревянный кант-слип идет строго по краю окна паспарту
+    if (hasKant.value && selectedKant.value?.price && windowW > 0 && windowL > 0) {
+      const slipLineM = (windowW * 2 + windowL * 2 + slipW * 8) / 100
+      const kantPrice = slipLineM * Number(selectedKant.value.price)
+      const kantName = selectedKant.value?.name || 'Классик'
+      textLines.push(
+        `✨ Кант-слип "${kantName}": вырез ${windowW}x${windowL} см (Расход: ${slipLineM.toFixed(2)} м) — ${(kantPrice * quantity.value).toFixed(2)} BYN`,
+      )
+    }
+  }
+
+  // 4. РАСЧЕТ СТЕКЛА
+  if (selectedGlassType.value && glassW > 5 && glassL > 5) {
+    const areaGlass = (glassW / 100) * (glassL / 100)
+    const glassPricePerMeter =
+      selectedGlassType.value === 'regular' ? priceRegular.value : priceAntiglare.value
+    const glassPrice = areaGlass * glassPricePerMeter
+    const glassName = selectedGlassType.value === 'regular' ? 'Обычное' : 'Антиблик'
+
+    textLines.push(
+      `🔮 Стекло (${glassName}): точный размер ${glassW}x${glassL} см — ${(glassPrice * quantity.value).toFixed(2)} BYN`,
+    )
+  }
+
+  const qtyText = quantity.value > 1 ? `\n📦 Количество: ${quantity.value} шт.` : ''
+  return textLines.join('\n') + qtyText
+})
+
+const cartItems = ref(JSON.parse(localStorage.getItem('cart') || '[]'))
+/*
+const addToCart = async () => {
+  if (!currentProduct.value) return
+
+  // 1. Создаем один скрытый холст в памяти для склеивания слоев
+  const finalCanvas = document.createElement('canvas')
+  finalCanvas.width = 600
+  finalCanvas.height = 800
+  const ctx = finalCanvas.getContext('2d')
+
+  // 2. Находим ваши 5 реальных экранных canvas по их ID
+  const c1 = document.getElementById('photoCanvas')
+  const c2 = document.getElementById('paspartuCanvas')
+  const c3 = document.getElementById('innerFrameCanvas')
+  const c4 = document.getElementById('outerFrameCanvas')
+  const c5 = document.getElementById('glassCanvas')
+
+  // 3. Поочередно копируем графику с экрана на финальный холст
+  // Копируем слои с правильным прямоугольным масштабированием (0, 0, ширина, высота)
+  if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
+
+  // 4. Делаем моментальный снимок получившейся сборки
+  const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+
+  const details = `${textureUrl.value || ''}_${colorName.value || ''}_${innerTextureUrl.value || ''}_${innerColorName.value || ''}_${glassType.value || ''}_${topTextureUrl.value || ''}_${bottomTextureUrl.value || ''}_${kantTextureUrl.value || ''}`
+
+  const cartProduct = {
+    product_id: currentProduct.value.id,
+    title: currentProduct.value.title || 'Рама в сборе',
+    price: Number(totalPrice.value || 0),
+    old_price: Number(currentProduct.value.old_price || 0),
+    quantity: Number(quantity.value || 1),
+    size: `${userWidth1.value || 0}x${userLength1.value || 0}см`,
+    image_preview: previewImage,
+    details: details, // Передаем уже созданную строку внутрь объекта
+  }
+
+  // 6. Сохраняем локально в хранилище браузера
+
+  cartItems.value.push(cartProduct)
+  localStorage.setItem('cart', JSON.stringify(cartItems.value))
+  // 7. Отправляем данные в Supabase
+  await supabase.from('cart_items').insert([
+    {
+      product_id: cartProduct.product_id,
+      title: cartProduct.title,
+      price: cartProduct.price,
+      quantity: cartProduct.quantity,
+      size: cartProduct.size,
+      image_preview: cartProduct.image_preview,
+    },
+  ])
+
+  // 8. Оповещаем хедер об обновлении
+  bus.emit('update-cart', cartProduct)
+}
+*/
+const addToCart = async () => {
+  if (!currentProduct.value) return
+
+  // 1. Создаем один скрытый холст в памяти для склеивания слоев
+  const finalCanvas = document.createElement('canvas')
+  finalCanvas.width = 600
+  finalCanvas.height = 800
+  const ctx = finalCanvas.getContext('2d')
+
+  // 2. Находим ваши 5 реальных экранных canvas по их ID
+  const c1 = document.getElementById('photoCanvas')
+  const c2 = document.getElementById('paspartuCanvas')
+  const c3 = document.getElementById('innerFrameCanvas')
+  const c4 = document.getElementById('outerFrameCanvas')
+  const c5 = document.getElementById('glassCanvas')
+
+  // 3. Поочередно копируем графику с экрана на финальный холст
+  if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
+  if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
+
+  // 4. Делаем моментальный снимок получившейся сборки
+  const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+
+  // 5. Формируем чистый объект товара для корзины (сверяем детали по существующим переменным)
+  const cartProduct = {
+    product_id: currentProduct.value.id,
+    title: currentProduct.value.title || 'Рама в сборе',
+    price: Number(totalPrice.value || 0),
+    old_price: Number(currentProduct.value.old_price || 0),
+    quantity: Number(quantity.value || 1),
+    size: `${userWidth1.value || 0}x${userLength1.value || 0}см`,
+    image_preview: previewImage,
+    // details: currentDetails.value, // Берем строку параметров из исправленного computed
+  }
+
+  // 6. Передаем управление в Pinia (она сама обновит массив, localStorage и базу данных Supabase)
+  await cartStore.addToCart(cartProduct)
+}
+/*
+bus.on('quantity-changed', ({ productId: incomingId, qty }) => {
+  if (incomingId === productId) {
+    quantity.value = qty // Синхронизируем инпут на странице
+  }
+})*/
+
+const cartStore = useCartStore()
+const currentQuantity = ref(1) // Локальный счетчик, если товара еще нет в корзине
+
+// Вычисляемая строка уникальных параметров для поиска именно этой сборки рамы
+const currentDetails = computed(() => {
+  return `${colorName.value || ''}_${innerTextureUrl.value || ''}_${innerColorName.value || ''}_${glassType.value || ''}_${topTextureUrl.value || ''}_${bottomTextureUrl.value || ''}_${kantTextureUrl.value || ''}`
+})
+
+// Контроллер связи с Pinia
+const cartItemIndex = computed(() => {
+  if (!currentProduct.value) return -1
+  return cartStore.cart.findIndex(
+    (item) =>
+      String(item.product_id) === String(currentProduct.value.id) &&
+      item.size === `${userWidth1.value || 0}x${userLength1.value || 0}см`,
+  )
+})
+
+const quantityController = computed({
+  get() {
+    return cartItemIndex.value !== -1
+      ? Number(cartStore.cart[cartItemIndex.value].quantity)
+      : Number(currentQuantity.value)
+  },
+  set(val) {
+    const num = Number(val)
+    if (isNaN(num) || num < 1) return
+
+    if (cartItemIndex.value !== -1) {
+      cartStore.updateQuantity(cartItemIndex.value, cartStore.cart[cartItemIndex.value], num)
+    } else {
+      currentQuantity.value = num
+    }
+  },
+})
+
+// То самое имя, которое ищет ваш HTML-шаблон
+const quantity = computed({
+  get: () => quantityController.value,
+  set: (val) => {
+    quantityController.value = Number(val)
+  },
+})
+
+// Функции кнопок плюс и минус без багов умножения
+const increaseQty = () => {
+  if (quantity.value < 500) {
+    quantity.value = quantity.value + 1
+  }
+}
+
+const decreaseQty = () => {
+  if (quantity.value > 1) {
+    quantity.value = quantity.value - 1
+  }
+}
 </script>
 
 <template>
@@ -1814,7 +2153,7 @@ const isHorizontalMode = computed(() => {
               ></button>
             </div>
             <!-- HTML-элемент (кнопка с SVG внутри) -->
-            <button class="close-btn" aria-label="Закрыть" @click="isPanelOpen = false">
+            <button class="close-btn" aria-label="Закрыть" @click="closeAllPanels()">
               <svg class="close-icon" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M18 6L6 18M6 6L18 18"
@@ -2043,6 +2382,7 @@ const isHorizontalMode = computed(() => {
                     >
                       <div
                         class="card-slider__thumbs"
+                        v-if="!isPaspartuActive && !isMainActive && !isPanelOpen"
                         :class="{
                           'is-square-shift': isSquare,
                           'is-horizontal-bottom':
@@ -2054,7 +2394,7 @@ const isHorizontalMode = computed(() => {
                         <!-- Кнопка показывается только если интерьер выбран -->
                         <button
                           v-if="currentInterior"
-                          @click="currentInterior = null"
+                          @click="((currentInterior = null), renderAll())"
                           class="btn-reset-interior"
                         >
                           ✕ Сбросить интерьер
@@ -2066,7 +2406,7 @@ const isHorizontalMode = computed(() => {
                           :class="{ 'is-active': currentInterior?.id === interior.id }"
                           @click="
                             currentInterior?.id === interior.id
-                              ? (currentInterior = null)
+                              ? ((currentInterior = null), renderAll())
                               : selectInterior(interior)
                           "
                           style="
@@ -2089,12 +2429,19 @@ const isHorizontalMode = computed(() => {
                         <!-- Внешний универсальный контейнер, который ВСЕГДА держит размер окна 574x759 -->
                         <div
                           class="canvas-container"
-                          style="position: relative; height: 759px; overflow: hidden"
+                          style="position: relative; overflow: hidden"
                           :style="{
-                            width:
-                              !isSquare && userWidth1 > userLength1 * 1.15 && !currentInterior
+                            width: isSquare
+                              ? '574px'
+                              : userWidth1 > userLength1 * 1.15 && !currentInterior
                                 ? '677px'
                                 : '574px',
+                            height:
+                              isSquare && !currentInterior
+                                ? '600px'
+                                : userWidth1 > userLength1 * 1.15 && !currentInterior
+                                  ? '400px'
+                                  : '759px',
                           }"
                         >
                           <!-- Картинка интерьера на самом заднем плане, заполняющая всё окно -->
@@ -2131,19 +2478,47 @@ const isHorizontalMode = computed(() => {
                           >
                             <canvas
                               id="photoCanvas"
-                              style="position: absolute; left: 0; top: 0; z-index: 2"
+                              style="
+                                position: absolute;
+                                left: 0;
+                                top: 0;
+                                z-index: 2;
+                                width: 100%;
+                                height: 100%;
+                              "
                             ></canvas>
                             <canvas
                               id="paspartuCanvas"
-                              style="position: absolute; left: 0; top: 0; z-index: 3"
+                              style="
+                                position: absolute;
+                                left: 0;
+                                top: 0;
+                                z-index: 3;
+                                width: 100%;
+                                height: 100%;
+                              "
                             ></canvas>
                             <canvas
                               id="innerFrameCanvas"
-                              style="position: absolute; left: 0; top: 0; z-index: 4"
+                              style="
+                                position: absolute;
+                                left: 0;
+                                top: 0;
+                                z-index: 4;
+                                width: 100%;
+                                height: 100%;
+                              "
                             ></canvas>
                             <canvas
                               id="outerFrameCanvas"
-                              style="position: absolute; left: 0; top: 0; z-index: 5"
+                              style="
+                                position: absolute;
+                                left: 0;
+                                top: 0;
+                                z-index: 5;
+                                width: 100%;
+                                height: 100%;
+                              "
                             ></canvas>
                             <canvas
                               id="glassCanvas"
@@ -2369,6 +2744,7 @@ const isHorizontalMode = computed(() => {
 
                       <div class="card-info__stepper stepper">
                         <button
+                          @click="increaseQty"
                           class="btn-reset stepper__btn stepper__btn--minus"
                           aria-label="minus"
                         >
@@ -2389,15 +2765,22 @@ const isHorizontalMode = computed(() => {
                           </svg>
                         </button>
 
-                        <input type="text" class="stepper__input" value="1" />
-                        <button class="btn-reset stepper__btn stepper__btn--plus" aria-label="plus">
+                        <input type="text" class="stepper__input" :value="quantity" readonly />
+                        <button
+                          @click="decreaseQty"
+                          class="btn-reset stepper__btn stepper__btn--plus"
+                          aria-label="plus"
+                        >
                           <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
                             <rect fill="none" height="256" width="256" />
                             <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
                           </svg>
                         </button>
                       </div>
-                      <button class="btn-reset card-info__btn card-info__btn--tocart">
+                      <button
+                        class="btn-reset card-info__btn card-info__btn--tocart"
+                        @click="addToCart"
+                      >
                         добавить в корзину
                       </button>
                       <button class="btn-reset card-info__btn card-info__btn--towishlist">
@@ -2418,21 +2801,27 @@ const isHorizontalMode = computed(() => {
                   </div>
                 </div>
                 <!-- card top -->
-
-                <div class="description_bottom">
-                  <div class="description_bottom__text">Описание</div>
-                  <p class="card-info__descr">
-                    Эта стильная рама из качественных материалов надежно защитит ваше изображение от
-                    внешних воздействий. Её лаконичный и универсальный дизайн гармонично подчеркнет
-                    красоту любого постера, картины или холста. Изделие идеально впишется в любой
-                    стиль интерьера квартиры, студии или уютного офиса. Прочные встроенные крепления
-                    обеспечивают легкий монтаж и безупречную фиксацию на стене.
-                  </p>
-                </div>
-                <div class="card-content__bottom">
-                  <!--    card bottom    -->
-                  <div class="card-bottom-content">
-                    <!--<div class="card-description">
+              </div>
+              <!-- CONTAINER7 -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="container10">
+        <div class="description_bottom">
+          <div class="description_bottom__text">Описание</div>
+          <p class="card-info__descr">
+            Эта стильная рама из качественных материалов надежно защитит ваше изображение от внешних
+            воздействий. Её лаконичный и универсальный дизайн гармонично подчеркнет красоту любого
+            постера, картины или холста. Изделие идеально впишется в любой стиль интерьера квартиры,
+            студии или уютного офиса. Прочные встроенные крепления обеспечивают легкий монтаж и
+            безупречную фиксацию на стене.
+          </p>
+        </div>
+        <div class="card-content__bottom">
+          <!--    card bottom    -->
+          <div class="card-bottom-content">
+            <!--<div class="card-description">
                       <div class="card-description__left">
                         <ul class="card-description__navigation">
                           <li class="card-description__item">
@@ -2501,187 +2890,179 @@ const isHorizontalMode = computed(() => {
                       </div>
                     </div>-->
 
-                    <div class="reviews-section">
-                      <h2>Отзывы клиентов</h2>
+            <div class="reviews-section">
+              <h2>Отзывы клиентов</h2>
 
-                      <!-- Кнопка открытия формы -->
-                      <button @click="showForm = !showForm" class="btn-toggle">
-                        {{ showForm ? 'Отменить отзыв' : 'Написать отзыв' }}
-                      </button>
+              <!-- Кнопка открытия формы -->
+              <button @click="showForm = !showForm" class="btn-toggle">
+                {{ showForm ? 'Отменить отзыв' : 'Написать отзыв' }}
+              </button>
 
-                      <!-- Скрытие/показ формы через Vue v-if -->
-                      <form v-if="showForm" @submit.prevent="addComment" class="comment-form">
-                        <textarea
-                          v-model="newComment"
-                          placeholder="Поделитесь вашим мнением о товаре..."
-                          required
-                        ></textarea>
-                        <button type="submit" class="btn-submit">Отправить</button>
-                      </form>
+              <!-- Скрытие/показ формы через Vue v-if -->
+              <form v-if="showForm" @submit.prevent="addComment" class="comment-form">
+                <textarea
+                  v-model="newComment"
+                  placeholder="Поделитесь вашим мнением о товаре..."
+                  required
+                ></textarea>
+                <button type="submit" class="btn-submit">Отправить</button>
+              </form>
 
-                      <!-- Список комментариев -->
-                      <div class="comments-list">
-                        <div v-for="comment in comments" :key="comment.id" class="comment-card">
-                          <p class="comment-text">{{ comment.text }}</p>
+              <!-- Список комментариев -->
+              <div class="comments-list">
+                <div v-for="comment in comments" :key="comment.id" class="comment-card">
+                  <p class="comment-text">{{ comment.text }}</p>
 
-                          <!-- Блок лайков в стиле Amazon -->
-                          <div class="comment-actions">
-                            <button
-                              @click="toggleLike(comment)"
-                              :class="{ 'is-liked': comment.isLiked }"
-                              class="btn-like"
-                            >
-                              Полезно ({{ comment.likes }})
-                            </button>
-                            <!-- Кнопка ДИЗЛАЙК -->
-                            <button
-                              @click="toggleDislike(comment)"
-                              :class="{ 'is-disliked': comment.isDisliked }"
-                              class="btn-dislike"
-                            >
-                              Не полезно ({{ comment.dislikes }})
-                            </button>
+                  <!-- Блок лайков в стиле Amazon -->
+                  <div class="comment-actions">
+                    <button
+                      @click="toggleLike(comment)"
+                      :class="{ 'is-liked': comment.isLiked }"
+                      class="btn-like"
+                    >
+                      Полезно ({{ comment.likes }})
+                    </button>
+                    <!-- Кнопка ДИЗЛАЙК -->
+                    <button
+                      @click="toggleDislike(comment)"
+                      :class="{ 'is-disliked': comment.isDisliked }"
+                      class="btn-dislike"
+                    >
+                      Не полезно ({{ comment.dislikes }})
+                    </button>
 
-                            <!-- Кнопка УДАЛЕНИЯ (показывается только для добавленных вами комментов) -->
-                            <button
-                              v-if="comment.isMyComment"
-                              @click="deleteComment(comment.id)"
-                              class="btn-delete"
-                            >
-                              Удалить
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="card-relatred">
-                      <!--card-related-->
-                      <h2 class="card-relatred__title">сопутствующие товары</h2>
-                      <div class="card-related__slider">
-                        <div class="swiper-wrapper">
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                              </div>
-                              <span class="product-prop product__prop best">Хит продаж</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-
-                              <span class="product__price2">$220.00 </span>
-                            </article>
-                          </div>
-
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <span class="product__sale2">скидка</span>
-
-                                <img
-                                  src="/images/works22 (1) (2) (3).png "
-                                  class="no-visible"
-                                  alt=""
-                                />
-                              </div>
-
-                              <span class="product-prop product__prop best">Хит продаж</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-
-                              <div class="product-custom">
-                                <div class="product-custom__price">
-                                  <span class="product__price2">$220.00 </span>
-                                </div>
-                              </div>
-                            </article>
-                          </div>
-
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <span class="product__sale2">скидка</span>
-                                <img src="/images/beautiful1.png" alt="product-1" />
-                              </div>
-
-                              <span class="product__prop22 sales2">скидка</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-                              <div class="product-custom">
-                                <div class="product-custom__price">
-                                  <span class="product__price2">$220.00 </span>
-
-                                  <span class="product__oldprice">$210.00</span>
-                                </div>
-                              </div>
-                            </article>
-                          </div>
-
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                              </div>
-                              <span class="product-prop product__prop best">Хит продаж</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-
-                              <div class="product-custom">
-                                <div class="product-custom__price">
-                                  <span class="product__price2">$220.00 </span>
-                                </div>
-                              </div>
-                            </article>
-                          </div>
-
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                              </div>
-                              <span class="product-prop product__prop best">Хит продаж</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-
-                              <div class="product-custom">
-                                <div class="product-custom__price">
-                                  <span class="product__price2">$220.00 </span>
-                                </div>
-                              </div>
-                            </article>
-                          </div>
-
-                          <div class="swiper-slide">
-                            <article class="product3">
-                              <div class="product__image">
-                                <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
-                              </div>
-                              <span class="product-prop product__prop best">Хит продаж</span>
-
-                              <h3 class="product__title2">
-                                <a href="#"> Eyes Mesh Boat Shoes </a>
-                              </h3>
-
-                              <span class="product__price">$220.00 </span>
-                            </article>
-                          </div>
-                        </div>
-
-                        <div class="swiper-pagination related-pag"></div>
-                      </div>
-                    </div>
+                    <!-- Кнопка УДАЛЕНИЯ (показывается только для добавленных вами комментов) -->
+                    <button
+                      v-if="comment.isMyComment"
+                      @click="deleteComment(comment.id)"
+                      class="btn-delete"
+                    >
+                      Удалить
+                    </button>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div class="card-relatred">
+              <!--card-related-->
+              <h2 class="card-relatred__title">сопутствующие товары</h2>
+              <div class="card-related__slider">
+                <div class="swiper-wrapper">
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
+                      </div>
+                      <span class="product-prop product__prop best">Хит продаж</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+
+                      <span class="product__price2">$220.00 </span>
+                    </article>
+                  </div>
+
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <span class="product__sale2">скидка</span>
+
+                        <img src="/images/works22 (1) (2) (3).png " class="no-visible" alt="" />
+                      </div>
+
+                      <span class="product-prop product__prop best">Хит продаж</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+
+                      <div class="product-custom">
+                        <div class="product-custom__price">
+                          <span class="product__price2">$220.00 </span>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <span class="product__sale2">скидка</span>
+                        <img src="/images/beautiful1.png" alt="product-1" />
+                      </div>
+
+                      <span class="product__prop22 sales2">скидка</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+                      <div class="product-custom">
+                        <div class="product-custom__price">
+                          <span class="product__price2">$220.00 </span>
+
+                          <span class="product__oldprice">$210.00</span>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
+                      </div>
+                      <span class="product-prop product__prop best">Хит продаж</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+
+                      <div class="product-custom">
+                        <div class="product-custom__price">
+                          <span class="product__price2">$220.00 </span>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
+                      </div>
+                      <span class="product-prop product__prop best">Хит продаж</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+
+                      <div class="product-custom">
+                        <div class="product-custom__price">
+                          <span class="product__price2">$220.00 </span>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="swiper-slide">
+                    <article class="product3">
+                      <div class="product__image">
+                        <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
+                      </div>
+                      <span class="product-prop product__prop best">Хит продаж</span>
+
+                      <h3 class="product__title2">
+                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                      </h3>
+
+                      <span class="product__price">$220.00 </span>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="swiper-pagination related-pag"></div>
               </div>
             </div>
           </div>
@@ -2692,6 +3073,20 @@ const isHorizontalMode = computed(() => {
 </template>
 
 <style>
+.parent {
+  display: flex; /* Включаем Flexbox */
+  justify-content: center; /* Центрируем по горизонтали */
+  align-items: center; /* Центрируем по вертикали */
+  height: 300px; /* Родителю нужна высота для вертикального центра */
+}
+
+.container10 {
+  max-width: 1220px;
+  margin: 0px auto;
+  padding: 0px 10px;
+  flex-shrink: 0;
+  min-width: 0;
+}
 /* Правильное горизонтальное положение миниатюр без поломок */
 .is-horizontal-column .card-slider__thumbs {
   position: absolute !important;
@@ -2723,11 +3118,13 @@ const isHorizontalMode = computed(() => {
 }
 .btn-reset-interior {
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 9px;
+  padding-right: px;
   margin-bottom: 10px;
   background-color: #f1f1f1;
-  border: 1px solid #ccc;
+  border: 1px solid #000000;
   border-radius: 4px;
+  margin-left: -1px;
   cursor: pointer;
   font-size: 14px;
 }
@@ -2778,6 +3175,7 @@ button:disabled {
   -webkit-appearance: none;
   margin: 0;
 }
+Ы
 
 /* Для Firefox */
 .fake-single-input input[type='number'] {
@@ -3817,6 +4215,9 @@ button:disabled {
   width: 12px;
   fill: rgb(133, 133, 133);
   transition: fill 0.3s;
+}
+.stepper__btn:hover svg {
+  fill: rgb(0, 0, 0);
 }
 .stepper__input {
   height: 100%;

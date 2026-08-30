@@ -2,19 +2,28 @@
 import { onMounted, onUnmounted, nextTick, watch, ref, computed } from 'vue'
 import { bus } from '../views/bus.js'
 import { drawFullFrame } from '../utils.js'
+import { storeToRefs } from 'pinia' // 1. Импортируем инструмент реактивности
 
 import { createClient } from '@supabase/supabase-js'
+import { useCartStore } from '../pinia.js' // Путь к пиниа.js
+
 const supabase = createClient(
   'https://aqfposmbxcqbpumvydhb.supabase.co',
   'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
 )
+
 const favorites = ref([])
+const cart = ref([]) // Массив товаров в корзине
 
 const activeBlock = ref(null) // Хранит 'heart', 'cart' или null
 
 const toggle = (name) => {
   activeBlock.value = activeBlock.value === name ? null : name
 }
+// Вычисляем общую сумму всей корзины для блока "Итого"
+const cartTotal = computed(() => {
+  return cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2)
+})
 
 const props = defineProps(['products'])
 
@@ -98,6 +107,25 @@ onMounted(() => {
       favorites.value.splice(index, 1)
     }
   })
+  // Загружаем сохраненную корзину из localStorage и Supabase при старте
+  const loadCart = async () => {
+    const localData = localStorage.getItem('cart')
+    if (localData) {
+      cart.value = JSON.parse(localData)
+    }
+
+    const { data } = await supabase.from('cart_items').select('*')
+    if (data && data.length > 0) {
+      cart.value = data
+    }
+  }
+  loadCart()
+
+  // Слушаем добавление в корзину из конструктора
+  bus.on('update-cart', (newProduct) => {
+    cart.value.push(newProduct)
+    localStorage.setItem('cart', JSON.stringify(cart.value))
+  })
 })
 const toggleLike = async (product) => {
   product.is_liked = false
@@ -116,6 +144,44 @@ const toggleLike = async (product) => {
   favorites.value = favorites.value.filter((p) => p.id !== product.id)
   bus.emit('update-favorites', product)
 }
+
+// Функция удаления товара из корзины
+const removeFromCart = async (index, item) => {
+  cart1.value.splice(index, 1)
+  localStorage.setItem('cart', JSON.stringify(cart1.value))
+  if (item.id) {
+    await supabase.from('cart_items').delete().eq('id', item.id)
+  }
+}
+/*
+const updateQuantity = async (index, item, newQty) => {
+  if (newQty < 1) return
+
+  cart.value[index].quantity = newQty
+  localStorage.setItem('cart', JSON.stringify(cart.value))
+
+  if (item.id) {
+    await supabase.from('cart_items').update({ quantity: newQty }).eq('id', item.id)
+  }
+}
+*/
+
+const totalItemsCount = computed(() => {
+  return cartStore.cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+})
+const totalFavoritesCount = computed(() => favorites.value.length)
+
+// 1. Автоматический реактивный подсчет общей суммы всей корзины
+const totalCartPrice = computed(() => {
+  return cart.value
+    .reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0)
+    .toFixed(2)
+})
+const cartStore = useCartStore()
+// Деструктурируем напрямую из хранилища для использования в HTML
+// 2. Достаем массив cart реактивно (теперь Vue увидит каждое изменение)
+const { cart: cart1 } = storeToRefs(cartStore)
+const { updateQuantity } = cartStore
 </script>
 
 <template>
@@ -143,162 +209,68 @@ const toggleLike = async (product) => {
             <div class="cart_icon">
               <img src="/images/card (1).png" @click="toggle('cart')" alt="" />
             </div>
-            <span class="cart_quantity">3</span>
+
+            <span v-if="totalItemsCount > 0" class="cart_quantity">{{ totalItemsCount }}</span
+            >.
           </div>
+
           <div class="purchase" :class="{ 'purchase--open': activeBlock === 'cart' }">
             <div class="purchase_top">
               <h2 class="purchase_title">Карзина</h2>
               <div class="purchase_products">
-                <article class="product2">
-                  <span class="product_sale2">20%</span>
+                <article v-for="(item, index) in cart1" :key="index" class="product2">
                   <router-link to="/carzina">
                     <div class="product_image2">
-                      <img src="/images/sadas.png" alt="" />
+                      <!-- Показывает точный снимок собранной рамы -->
+                      <img :src="item.image_preview" alt="Превью рамы" />
                     </div>
                   </router-link>
 
                   <div class="purchase_prices">
                     <div class="purchase_prices_top">
                       <router-link to="/carzina">
-                        <h3 class="product_title2">
-                          <a href=""> Eyes Mesh Boat Shoes</a>
-                        </h3>
+                        <h3 class="product_title2">{{ item.title }}</h3>
+                        <span class="product_quantity2">{{ item.quantity }} шт.</span>
                       </router-link>
                     </div>
                     <div class="purchase_prices_bottom">
-                      <span class="product_price2">$220.00</span>
-                      <span class="product_oldprice2">$210.00</span>
-                      <span class="purchase_size">21x30см</span>
-                      <div class="car_info_stepper2 stepper2">
-                        <button
-                          class="btn-reset stepper_btn2 stepper_btn--minus border-brand-500"
-                          aria-label="minus"
-                        >
-                          <svg
-                            height="512px"
-                            id="Layer_1"
-                            style="enable-background: new 0 0 512 512"
-                            version="1.1"
-                            viewBox="0 0 512 512"
-                            width="512px"
-                            xml:space="preserve"
-                            xmlns="http://www.w3.org/2000/svg"
-                            xmlns:xlink="http://www.w3.org/1999/xlink"
-                          >
-                            <path
-                              d="M417.4,224H288V94.6c0-16.9-14.3-30.6-32-30.6c-17.7,0-32,13.7-32,30.6V224H94.6C77.7,224,64,238.3,64,256  c0,17.7,13.7,32,30.6,32H224v129.4c0,16.9,14.3,30.6,32,30.6c17.7,0,32-13.7,32-30.6V288h129.4c16.9,0,30.6-14.3,30.6-32  C448,238.3,434.3,224,417.4,224z"
-                            />
-                          </svg>
-                        </button>
-                        <input type="text" class="stepper_input2" value="1" />
-                        <button
-                          class="btn-reset stepper_btn2 stepper_btn--plus border-brand-500"
-                          aria-label="plus"
-                        >
-                          <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-                            <rect fill="none" height="256" width="256" />
-                            <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <span class="purchase_toggle2">
-                      <svg
-                        id="1"
-                        style="enable-background: new 0 0 512 512"
-                        version="1.1"
-                        viewBox="0 0 512 512"
-                        xml:space="preserve"
-                        xmlns="http://www.w3.org/2000/svg"
-                        xmlns:xlink="http://www.w3.org/1999/xlink"
+                      <span class="product_price2">BYN {{ item.price }}</span>
+                      <span v-if="item.old_price" class="product_oldprice2"
+                        >BYN {{ item.old_price }}</span
                       >
-                        <g>
-                          <g>
-                            <g>
-                              <path
-                                d="M256,48C141.1,48,48,141.1,48,256s93.1,208,208,208c114.9,0,208-93.1,208-208S370.9,48,256,48z M256,446.7     c-105.1,0-190.7-85.5-190.7-190.7c0-105.1,85.5-190.7,190.7-190.7c105.1,0,190.7,85.5,190.7,190.7     C446.7,361.1,361.1,446.7,256,446.7z"
-                              />
-                            </g>
-                          </g>
-                          <rect height="17" width="256" x="128" y="248" />
-                        </g>
-                      </svg>
-                    </span>
-                  </div>
-                </article>
-                <article class="product2">
-                  <span class="product_sale2">20%</span>
-                  <router-link to="/carzina">
-                    <div class="product_image2">
-                      <img src="/images/sadas.png" alt="" />
-                    </div>
-                  </router-link>
+                      <div class="parent10">
+                        <span class="purchase_size">{{ item.size }}</span>
 
-                  <div class="purchase_prices">
-                    <div class="purchase_prices_top">
-                      <router-link to="/carzina">
-                        <h3 class="product_title2">
-                          <a href=""> Eyes Mesh Boat Shoes</a>
-                        </h3>
-                      </router-link>
-                    </div>
-                    <div class="purchase_prices_bottom">
-                      <span class="product_price2">$220.00</span>
-                      <span class="product_oldprice2">$210.00</span>
-                      <span class="purchase_size">21x30см</span>
-                      <div class="car_info_stepper2 stepper2">
-                        <button
-                          class="btn-reset stepper_btn2 stepper_btn--minus border-brand-500"
-                          aria-label="minus"
-                        >
-                          <svg
-                            height="512px"
-                            id="Layer_1"
-                            style="enable-background: new 0 0 512 512"
-                            version="1.1"
-                            viewBox="0 0 512 512"
-                            width="512px"
-                            xml:space="preserve"
-                            xmlns="http://www.w3.org/2000/svg"
-                            xmlns:xlink="http://www.w3.org/1999/xlink"
+                        <!-- БЕЗ ЛИШНЕГО V-FOR. Кнопки используют item и index от верхнего тега <article> -->
+                        <div class="car_info_stepper2 stepper2">
+                          <button
+                            class="btn-reset stepper_btn2 stepper_btn--minus border-brand-500"
+                            @click="updateQuantity(index, item, item.quantity - 1)"
                           >
-                            <path
-                              d="M417.4,224H288V94.6c0-16.9-14.3-30.6-32-30.6c-17.7,0-32,13.7-32,30.6V224H94.6C77.7,224,64,238.3,64,256  c0,17.7,13.7,32,30.6,32H224v129.4c0,16.9,14.3,30.6,32,30.6c17.7,0,32-13.7,32-30.6V288h129.4c16.9,0,30.6-14.3,30.6-32  C448,238.3,434.3,224,417.4,224z"
-                            />
-                          </svg>
-                        </button>
-                        <input type="text" class="stepper_input2" value="1" />
-                        <button
-                          class="btn-reset stepper_btn2 stepper_btn--plus border-brand-500"
-                          aria-label="plus"
-                        >
-                          <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-                            <rect fill="none" height="256" width="256" />
-                            <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
-                          </svg>
-                        </button>
+                            -
+                          </button>
+                          <input
+                            type="text"
+                            class="stepper_input2"
+                            :value="item.quantity"
+                            readonly
+                          />
+                          <button
+                            class="btn-reset stepper_btn2 stepper_btn--plus border-brand-500"
+                            @click="updateQuantity(index, item, item.quantity + 1)"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <span class="purchase_toggle2">
-                      <svg
-                        id="1"
-                        style="enable-background: new 0 0 512 512"
-                        version="1.1"
-                        viewBox="0 0 512 512"
-                        xml:space="preserve"
-                        xmlns="http://www.w3.org/2000/svg"
-                        xmlns:xlink="http://www.w3.org/1999/xlink"
-                      >
-                        <g>
-                          <g>
-                            <g>
-                              <path
-                                d="M256,48C141.1,48,48,141.1,48,256s93.1,208,208,208c114.9,0,208-93.1,208-208S370.9,48,256,48z M256,446.7     c-105.1,0-190.7-85.5-190.7-190.7c0-105.1,85.5-190.7,190.7-190.7c105.1,0,190.7,85.5,190.7,190.7     C446.7,361.1,361.1,446.7,256,446.7z"
-                              />
-                            </g>
-                          </g>
-                          <rect height="17" width="256" x="128" y="248" />
-                        </g>
+
+                    <span class="purchase_toggle2" @click="removeFromCart(index, item)">
+                      <svg viewBox="0 0 512 512" width="20" height="20">
+                        <path
+                          d="M256,48C141.1,48,48,141.1,48,256s93.1,208,208,208c114.9,0,208-93.1,208-208S370.9,48,256,48z M256,446.7 c-105.1,0-190.7-85.5-190.7-190.7c0-105.1,85.5-190.7,190.7-190.7c105.1,0,190.7,85.5,190.7,190.7 C446.7,361.1,361.1,446.7,256,446.7z"
+                        />
+                        <rect height="17" width="256" x="128" y="248" />
                       </svg>
                     </span>
                   </div>
@@ -308,7 +280,7 @@ const toggleLike = async (product) => {
             <div class="purchase_bottom">
               <div class="purchase_totalprise">
                 <h2 class="purchase_totletitle2">Итого</h2>
-                <span class="product_totleprice2">$220.00</span>
+                <span class="product_totleprice2">BYN {{ totalCartPrice }}</span>
               </div>
             </div>
             <router-link to="/carzina" class="pur_button">
@@ -344,7 +316,9 @@ const toggleLike = async (product) => {
                 </svg>
               </div>
             </div>
-            <span class="cart_quantity">3</span>
+            <span v-if="totalFavoritesCount > 0" class="cart_quantity">{{
+              totalFavoritesCount
+            }}</span>
           </div>
 
           <div class="heart" :class="{ 'heart--open': activeBlock === 'heart' }">
@@ -438,6 +412,32 @@ const toggleLike = async (product) => {
 </template>
 
 <style>
+.parent10 {
+  margin: 0;
+  padding: 0;
+  display: flex; /* Включаем Flexbox */
+  flex-direction: column;
+  gap: 14px;
+}
+.product_quantity2 {
+  position: absolute;
+  right: 1px;
+  font-family: sans-serif;
+  color: #454545;
+  font-size: 13px;
+}
+.product_image2 {
+  width: 70px; /* Задайте фиксированную ширину для блока */
+  height: 70px; /* И высоту, чтобы сделать его квадратным */
+  flex-shrink: 0; /* Запретите флекс-контейнеру сжимать картинку */
+  overflow: hidden; /* Скройте лишнее */
+}
+
+.product_image2 img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* Рама полностью поместится в квадрат без обрезки */
+}
 /*carzina*/
 .cart_icon {
   cursor: pointer;
@@ -647,14 +647,6 @@ const toggleLike = async (product) => {
   font-weight: 300;
   font-size: 15px;
 }
-.purchase_toggle2 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  color: #aaa;
-  right: 1px;
-  top: 50px;
-}
 
 .product_oldprice2 {
   font-weight: 300;
@@ -668,15 +660,15 @@ const toggleLike = async (product) => {
   font-weight: 300;
   font-size: 12px;
   color: #393939;
-  margin-left: 5px;
+  margin-bottom: -10px;
 }
+
 .stepper2 {
   display: flex;
   height: 24px;
   width: 124px;
   border: 1px solid #ccc;
   position: relative;
-  margin-top: 10px;
 }
 
 .card_info_stepper2 {
@@ -740,19 +732,18 @@ const toggleLike = async (product) => {
 }
 .purchase_toggle2 {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 25px;
+  height: 25px;
   color: #aaa;
   right: 1px;
   top: 50px;
+  z-index: 100;
 }
 .purchase_toggle2 svg {
-  position: absolute;
-  margin-top: 3px;
+  margin-top: 23px;
   width: 25px;
   height: 25px;
-  left: -18px;
-  top: 0px;
+
   background-color: #fff;
   transition: fill 0.3s;
 }
@@ -785,15 +776,6 @@ const toggleLike = async (product) => {
   text-transform: uppercase;
 }
 
-.purchase_toggle2 {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  color: #aaa;
-  right: 1px;
-  top: 50px;
-}
-
 .product2 {
   position: relative;
   display: flex;
@@ -806,11 +788,12 @@ const toggleLike = async (product) => {
   flex-direction: column;
   justify-content: space-between;
   width: 360px;
-  height: 346px;
+  max-height: 376px;
+  height: auto;
   background-color: #fff;
   padding: 10px;
   /* position: relative; */
-  overflow: auto;
+  overflow: hidden; /* Скрывает контент и убирает полосы прокрутки */
   position: absolute;
   left: 0;
   top: 100%;
@@ -828,12 +811,13 @@ const toggleLike = async (product) => {
   justify-content: space-between;
 }
 .product_totleprice2 {
-  width: 55px;
+  width: auto;
   height: 13px;
   color: #151515;
   font-weight: 700;
   font-size: 15px;
-  margin-right: 10px;
+  margin-right: 15px;
+  margin-top: 8px;
 }
 
 .pur_button {
@@ -841,7 +825,7 @@ const toggleLike = async (product) => {
   text-decoration: none; /* Убирает подчеркивание ссылки */
   text-align: center;
   /* Ваши остальные стили: background, padding, border и т.д. */
-  height: 44px;
+  height: 54px;
   padding-left: 77px;
   padding-right: 77px;
   background-color: #000;
@@ -850,6 +834,7 @@ const toggleLike = async (product) => {
   margin-top: 10px;
   width: 324.4px;
   cursor: pointer;
+  padding-top: 10px;
 }
 .pur_button_heart {
   display: inline-block; /* Чтобы работали отступы и размеры */
@@ -959,8 +944,6 @@ const toggleLike = async (product) => {
 }
 
 .purchase {
-  overflow: auto;
-  scrollbar-color: #fa8128 transparent; /* Оставляем только для Firefox */
   /* scrollbar-width: thin;  <-- УДАЛИТЕ ЭТУ СТРОКУ, она блокирует webkit-стили в Chrome */
   z-index: 999;
 }
@@ -977,6 +960,7 @@ const toggleLike = async (product) => {
 .purchase_products {
   max-height: 220px;
   overflow-y: auto;
+  scrollbar-color: #fa8128 transparent; /* Оставляем только для Firefox */
 }
 
 /*CARZINA  */
