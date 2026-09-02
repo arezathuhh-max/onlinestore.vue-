@@ -5,6 +5,7 @@ import '@/assets/main.css'
 import 'swiper/css/pagination'
 import Swiper from 'swiper'
 import { bus } from '../views/bus.js'
+import { storeToRefs } from 'pinia' // 1. Импортируем инструмент реактивности
 
 import { supabase } from '../router/supabase.js'
 import { interiorsList, loadInteriors } from '../assets/interiors.js' // укажите ваш точный путь к файлу
@@ -12,6 +13,7 @@ import { interiorsList, loadInteriors } from '../assets/interiors.js' // ука�
 import { useRoute } from 'vue-router' // Импортируем для работы с URL
 import { products, loadProducts } from '@/productsData.js'
 import { useCartStore } from '../pinia.js'
+
 const isPaspartuActive = ref(false)
 // Цвет кнопки
 const hasPaspartu = computed(() => isPaspartuActive.value)
@@ -2007,46 +2009,108 @@ const addToCart = async () => {
   bus.emit('update-cart', cartProduct)
 }
 */
+const currentDetails = computed(() => {
+  return [
+    currentProduct.value?.frame_url || '',
+    selectedColor.value || '',
+    frameType.value || 'single',
+    selectedInnerFrame.value?.frame_url || '',
+    innerFrameColor.value || '',
+    isPaspartuActive.value ? 'paspartu-on' : 'paspartu-off',
+    isPaspartuActive.value ? selectedTopPaspartu.value?.image || '' : '',
+    isPaspartuActive.value ? selectedBottomPaspartu.value?.image || '' : '',
+    isPaspartuActive.value && hasKant.value ? 'kant-on' : 'kant-off',
+    isPaspartuActive.value && hasKant.value ? selectedKant.value?.image || '' : '',
+    selectedGlassType.value || '',
+  ].join('_')
+})
 const addToCart = async () => {
-  if (!currentProduct.value) return
+  if (!currentProduct.value || isSubmitting.value) return
+  isSubmitting.value = true // Блокируем кнопку перед запросом
 
-  // 1. Создаем один скрытый холст в памяти для склеивания слоев
-  const finalCanvas = document.createElement('canvas')
-  finalCanvas.width = 600
-  finalCanvas.height = 800
-  const ctx = finalCanvas.getContext('2d')
+  try {
+    // 1. Создаем один скрытый холст в памяти для склеивания слоев
+    const finalCanvas = document.createElement('canvas')
+    finalCanvas.width = 600
+    finalCanvas.height = 800
+    const ctx = finalCanvas.getContext('2d')
 
-  // 2. Находим ваши 5 реальных экранных canvas по их ID
-  const c1 = document.getElementById('photoCanvas')
-  const c2 = document.getElementById('paspartuCanvas')
-  const c3 = document.getElementById('innerFrameCanvas')
-  const c4 = document.getElementById('outerFrameCanvas')
-  const c5 = document.getElementById('glassCanvas')
+    // 2. Находим ваши 5 реальных экранных canvas по их ID
+    const c1 = document.getElementById('photoCanvas')
+    const c2 = document.getElementById('paspartuCanvas')
+    const c3 = document.getElementById('innerFrameCanvas')
+    const c4 = document.getElementById('outerFrameCanvas')
+    const c5 = document.getElementById('glassCanvas')
 
-  // 3. Поочередно копируем графику с экрана на финальный холст
-  if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
-  if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
-  if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
-  if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
-  if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
+    // 3. Поочередно копируем графику с экрана на финальный холст
+    if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
 
-  // 4. Делаем моментальный снимок получившейся сборки
-  const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+    // 4. Делаем моментальный снимок получившейся сборки
+    const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+    // Вычисляемая строка уникальных параметров для поиска именно этой сборки рамы
+    /*
+  const currentDetails = computed(() => {
+    return [
+      // Внешняя рама: текстура и цвет (заменили несуществующий colorName на selectedColor)
+      currentProduct.value?.frame_url || '',
+      selectedColor.value || '',
 
-  // 5. Формируем чистый объект товара для корзины (сверяем детали по существующим переменным)
-  const cartProduct = {
-    product_id: currentProduct.value.id,
-    title: currentProduct.value.title || 'Рама в сборе',
-    price: Number(totalPrice.value || 0),
-    old_price: Number(currentProduct.value.old_price || 0),
-    quantity: Number(quantity.value || 1),
-    size: `${userWidth1.value || 0}x${userLength1.value || 0}см`,
-    image_preview: previewImage,
-    // details: currentDetails.value, // Берем строку параметров из исправленного computed
+      // Внутренняя рама: тип, текстура и цвет
+      frameType.value || 'single',
+      selectedInnerFrame.value?.frame_url || '',
+      innerFrameColor.value || '',
+
+      // Паспарту: активность, текстура верхнего и текстура нижнего
+      isPaspartuActive.value ? 'paspartu-on' : 'paspartu-off',
+      isPaspartuActive.value ? selectedTopPaspartu.value?.image || '' : '',
+      isPaspartuActive.value ? selectedBottomPaspartu.value?.image || '' : '',
+
+      // Кант-слип: наличие и текстура
+      isPaspartuActive.value && hasKant.value ? 'kant-on' : 'kant-off',
+      isPaspartuActive.value && hasKant.value ? selectedKant.value?.image || '' : '',
+
+      // Стекло: тип
+      selectedGlassType.value || '',
+    ].join('_')
+  })*/
+
+    // 5. Формируем чистый объект товара для корзины (сверяем детали по существующим переменным)
+    const cartProduct = {
+      product_id: currentProduct.value.id,
+      title: currentProduct.value.title || 'Рама в сборе',
+      price: Number(totalPrice.value || 0),
+      old_price: Number(currentProduct.value.old_price || 0),
+      quantity: Number(quantity.value || 1),
+      size: `${userWidth1.value || 0}x${userLength1.value || 0}см`,
+      image_preview: previewImage,
+      details: currentDetails.value,
+
+      // Добавляем отправку параметров в существующие колонки вашей таблицы:
+      selected_color: selectedColor.value || null,
+      frame_type: frameType.value || 'single',
+      inner_frame_id: selectedInnerFrame.value ? String(selectedInnerFrame.value.id) : null,
+      inner_frame_name: selectedInnerFrame.value ? selectedInnerFrame.value.title : null,
+      inner_frame_color: innerFrameColor.value || null,
+      is_paspartu_active: Boolean(isPaspartuActive.value),
+      paspartu_layers: Number(paspartuLayers.value || 1),
+      top_paspartu_name: isPaspartuActive.value ? selectedTopPaspartu.value?.name || null : null,
+      bottom_paspartu_name: isPaspartuActive.value
+        ? selectedBottomPaspartu.value?.name || null
+        : null,
+      has_kant: Boolean(isPaspartuActive.value ? hasKant.value : false),
+      kant_name: isPaspartuActive.value ? selectedKant.value?.name || null : null,
+      glass_type: selectedGlassType.value || null,
+    }
+
+    // 6. Передаем управление в Pinia (она сама обновит массив, localStorage и базу данных Supabase)
+    await cartStore.addToCart(cartProduct)
+  } finally {
+    isSubmitting.value = false // Разблокируем кнопку после ответа БД
   }
-
-  // 6. Передаем управление в Pinia (она сама обновит массив, localStorage и базу данных Supabase)
-  await cartStore.addToCart(cartProduct)
 }
 /*
 bus.on('quantity-changed', ({ productId: incomingId, qty }) => {
@@ -2056,27 +2120,25 @@ bus.on('quantity-changed', ({ productId: incomingId, qty }) => {
 })*/
 
 const cartStore = useCartStore()
-const currentQuantity = ref(1) // Локальный счетчик, если товара еще нет в корзине
+const { cart } = storeToRefs(cartStore) // Включаем реактивность для карточки
 
-// Вычисляемая строка уникальных параметров для поиска именно этой сборки рамы
-const currentDetails = computed(() => {
-  return `${colorName.value || ''}_${innerTextureUrl.value || ''}_${innerColorName.value || ''}_${glassType.value || ''}_${topTextureUrl.value || ''}_${bottomTextureUrl.value || ''}_${kantTextureUrl.value || ''}`
-})
+const currentQuantity = ref(1) // Локальный счетчик, если товара еще нет в корзине
 
 // Контроллер связи с Pinia
 const cartItemIndex = computed(() => {
   if (!currentProduct.value) return -1
-  return cartStore.cart.findIndex(
+  return cart.value.findIndex(
     (item) =>
       String(item.product_id) === String(currentProduct.value.id) &&
-      item.size === `${userWidth1.value || 0}x${userLength1.value || 0}см`,
+      item.size === `${userWidth1.value || 0}x${userLength1.value || 0}см` &&
+      item.details === currentDetails.value, // Точное сравнение параметров
   )
 })
 
 const quantityController = computed({
   get() {
     return cartItemIndex.value !== -1
-      ? Number(cartStore.cart[cartItemIndex.value].quantity)
+      ? Number(cart.value[cartItemIndex.value].quantity)
       : Number(currentQuantity.value)
   },
   set(val) {
@@ -2084,7 +2146,7 @@ const quantityController = computed({
     if (isNaN(num) || num < 1) return
 
     if (cartItemIndex.value !== -1) {
-      cartStore.updateQuantity(cartItemIndex.value, cartStore.cart[cartItemIndex.value], num)
+      cartStore.updateQuantity(cartItemIndex.value, cart.value[cartItemIndex.value], num)
     } else {
       currentQuantity.value = num
     }
@@ -2099,16 +2161,89 @@ const quantity = computed({
   },
 })
 
-// Функции кнопок плюс и минус без багов умножения
-const increaseQty = () => {
-  if (quantity.value < 500) {
-    quantity.value = quantity.value + 1
+// Функции кнопок плюс и минус с автоматической синхронизацией Pinia и Supabase
+
+const increaseQty = async () => {
+  console.log('Карточка:', currentDetails.value)
+  console.log(
+    'Корзина:',
+    cart.value.map((i) => i.details),
+  )
+  if (cartItemIndex.value !== -1) {
+    // Берём текущую цифру, приводим к числу и передаем строго +1
+    const currentQty = Number(cart.value[cartItemIndex.value].quantity || 1)
+    if (currentQty < 500) {
+      await cartStore.updateQuantity(
+        cartItemIndex.value,
+        cart.value[cartItemIndex.value],
+        currentQty + 1,
+      )
+    }
+  } else if (quantity.value < 500) {
+    quantity.value++
   }
 }
 
-const decreaseQty = () => {
-  if (quantity.value > 1) {
-    quantity.value = quantity.value - 1
+const decreaseQty = async () => {
+  if (cartItemIndex.value !== -1) {
+    // Берём текущую цифру, приводим к числу и передаем строго -1
+    const currentQty = Number(cart.value[cartItemIndex.value].quantity || 1)
+    if (currentQty > 1) {
+      await cartStore.updateQuantity(
+        cartItemIndex.value,
+        cart.value[cartItemIndex.value],
+        currentQty - 1,
+      )
+    }
+  } else if (quantity.value > 1) {
+    quantity.value--
+  }
+}
+const isSubmitting = ref(false)
+
+const isFavoriteSubmitting = ref(false)
+
+const addToFavorites = async () => {
+  if (!currentProduct.value || isFavoriteSubmitting.value) return
+  isFavoriteSubmitting.value = true
+
+  try {
+    // 1. Создаем скрытый холст в памяти для склеивания слоев
+    const finalCanvas = document.createElement('canvas')
+    finalCanvas.width = 600
+    finalCanvas.height = 800
+    const ctx = finalCanvas.getContext('2d')
+
+    // 2. Находим 5 экранных canvas по их ID
+    const c1 = document.getElementById('photoCanvas')
+    const c2 = document.getElementById('paspartuCanvas')
+    const c3 = document.getElementById('innerFrameCanvas')
+    const c4 = document.getElementById('outerFrameCanvas')
+    const c5 = document.getElementById('glassCanvas')
+
+    // 3. Поочередно копируем графику на финальный холст
+    if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
+
+    // 4. Делаем снимок получившейся сборки
+    const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+
+    const favoriteItem = {
+      id: currentProduct.value.id,
+      title: currentProduct.value.title,
+      price: totalPrice.value,
+      old_price: currentProduct.value.old_price || null,
+      selectedSize: `${userWidth1.value.value}x${userLength1.value} см`,
+      image_preview: previewImage,
+      link: `/product/${currentProduct.value.id}`,
+    }
+
+    await favoritesStore.addToFavorites(favoriteItem)
+  } finally {
+    isFavoriteSubmitting.value = false
   }
 }
 </script>
@@ -2744,9 +2879,22 @@ const decreaseQty = () => {
 
                       <div class="card-info__stepper stepper">
                         <button
-                          @click="increaseQty"
+                          @click="decreaseQty"
                           class="btn-reset stepper__btn stepper__btn--minus"
                           aria-label="minus"
+                        >
+                          <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+                            <rect fill="none" height="256" width="256" />
+                            <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
+                          </svg>
+                        </button>
+
+                        <input type="text" class="stepper__input" v-model.number="quantity" />
+
+                        <button
+                          @click="increaseQty"
+                          class="btn-reset stepper__btn stepper__btn--plus"
+                          aria-label="plus"
                         >
                           <svg
                             height="512px"
@@ -2764,27 +2912,19 @@ const decreaseQty = () => {
                             />
                           </svg>
                         </button>
-
-                        <input type="text" class="stepper__input" :value="quantity" readonly />
-                        <button
-                          @click="decreaseQty"
-                          class="btn-reset stepper__btn stepper__btn--plus"
-                          aria-label="plus"
-                        >
-                          <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-                            <rect fill="none" height="256" width="256" />
-                            <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
-                          </svg>
-                        </button>
                       </div>
                       <button
                         class="btn-reset card-info__btn card-info__btn--tocart"
                         @click="addToCart"
                       >
-                        добавить в корзину
+                        {{ isSubmitting ? 'Добавление...' : 'Добавить в корзину' }}
                       </button>
-                      <button class="btn-reset card-info__btn card-info__btn--towishlist">
-                        добавить в Понравившиеся
+                      <button
+                        class="btn-reset card-info__btn card-info__btn--towishlist"
+                        @click="addToFavorites"
+                        :disabled="isFavoriteSubmitting"
+                      >
+                        {{ isFavoriteSubmitting ? 'Добавление...' : 'Добавить в Понравившиеся' }}
                       </button>
 
                       <div class="card-info__bottom card-bottom">
@@ -4254,13 +4394,13 @@ button:disabled {
     background-color 0.3s;
 }
 .card-info__btn--tocart {
-  background-color: rgb(0, 0, 0);
-  color: rgb(255, 255, 255);
+  background-color: rgb(242, 242, 242);
+  color: rgb(3, 3, 3);
 }
 
 .card-info__btn--tocart:hover {
-  background-color: #ffffff;
-  color: #000000;
+  background-color: #000000;
+  color: #ffffff;
 
   transition:
     color 0.3s,

@@ -18,7 +18,9 @@ export const useCartStore = defineStore('cart', () => {
     // Приведение к String решает проблему несовпадения типов, которую вернула база данных
     const existingIndex = cart.value.findIndex(
       (item) =>
-        String(item.product_id) === String(product.product_id) && item.size === product.size,
+        String(item.product_id) === String(product.product_id) &&
+        item.size === product.size &&
+        item.details === product.details,
     )
 
     if (existingIndex !== -1) {

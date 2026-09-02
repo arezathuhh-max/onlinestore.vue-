@@ -252,8 +252,7 @@ const { updateQuantity } = cartStore
                           <input
                             type="text"
                             class="stepper_input2"
-                            :value="item.quantity"
-                            readonly
+                            v-model.number="item.quantity"
                           />
                           <button
                             class="btn-reset stepper_btn2 stepper_btn--plus border-brand-500"
@@ -666,7 +665,7 @@ const { updateQuantity } = cartStore
 .stepper2 {
   display: flex;
   height: 24px;
-  width: 124px;
+  width: 125px;
   border: 1px solid #ccc;
   position: relative;
 }
@@ -768,7 +767,7 @@ const { updateQuantity } = cartStore
   /* flex-grow: 1; */
   padding-left: 41px;
   padding-right: 35px;
-  width: 94px;
+  width: 101px;
   /* text-align: center; */
   color: #151515;
   font-size: 13px;
