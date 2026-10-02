@@ -6,14 +6,26 @@ import { storeToRefs } from 'pinia' // 1. Импортируем инструм�
 
 import { createClient } from '@supabase/supabase-js'
 import { useCartStore } from '../pinia.js' // Путь к пиниа.js
+import { useFavoritesStore } from '../favoritepinia.js'
 
+// Подключаем стор
+const favoritesStore = useFavoritesStore()
+
+// Делаем favorites реактивным с помощью storeToRefs
+const { favorites } = storeToRefs(favoritesStore)
+const { removeFromFavorites } = favoritesStore
+
+// Автоматический подсчет количества товаров для бейджа
+const totalFavoritesCount = computed(() => favorites.value.length)
+
+// Функция удаления товара при клике на сердечко внутри выпадающего списка
+const toggleLike = (product) => {
+  favoritesStore.removeFromFavorites(product.id)
+}
 const supabase = createClient(
   'https://aqfposmbxcqbpumvydhb.supabase.co',
   'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
 )
-
-const favorites = ref([])
-const cart = ref([]) // Массив товаров в корзине
 
 const activeBlock = ref(null) // Хранит 'heart', 'cart' или null
 
@@ -30,40 +42,6 @@ const props = defineProps(['products'])
 const likedProducts = computed(() => (props.products || []).filter((p) => p.is_liked))
 
 onMounted(() => {
-  const loadStored = async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_liked', true)
-      .order('updated_at', { ascending: true })
-    if (data) {
-      // При загрузке сразу считаем цену с учетом цвета
-      favorites.value = data.map((p) => ({
-        ...p,
-        base_price: p.price, // Сохраняем базовую цену
-        price: p.selected_color
-          ? (p.base_price || p.price) + (p.paint_price || 0)
-          : p.base_price || p.price,
-      }))
-
-      setTimeout(() => {
-        favorites.value.forEach((p) =>
-          drawFullFrame(
-            `canvas-fav-${p.id}`,
-            p.frame_url,
-            120,
-            p.image_url,
-            120,
-            40,
-            p.is_stretch,
-            p.selected_color,
-          ),
-        )
-      }, 800)
-    }
-  }
-  loadStored()
-
   bus.on('update-favorites', (updatedProduct) => {
     const index = favorites.value.findIndex((p) => p.id === updatedProduct.id)
 
@@ -108,51 +86,13 @@ onMounted(() => {
     }
   })
   // Загружаем сохраненную корзину из localStorage и Supabase при старте
-  const loadCart = async () => {
-    const localData = localStorage.getItem('cart')
-    if (localData) {
-      cart.value = JSON.parse(localData)
-    }
-
-    const { data } = await supabase.from('cart_items').select('*')
-    if (data && data.length > 0) {
-      cart.value = data
-    }
-  }
-  loadCart()
 
   // Слушаем добавление в корзину из конструктора
-  bus.on('update-cart', (newProduct) => {
-    cart.value.push(newProduct)
-    localStorage.setItem('cart', JSON.stringify(cart.value))
+  bus.on('update-cart', async (newProduct) => {
+    await addToCart(newProduct)
   })
 })
-const toggleLike = async (product) => {
-  product.is_liked = false
-  product.selected_color = null // Очищаем цвет локально
-  product.color_name = null
 
-  // Сохраняем в Supabase: отключаем лайк и обнуляем цвет, чтобы он не стирался некорректно
-  await supabase
-    .from('products')
-    .update({
-      is_liked: false,
-      selected_color: null,
-    })
-    .eq('id', product.id)
-
-  favorites.value = favorites.value.filter((p) => p.id !== product.id)
-  bus.emit('update-favorites', product)
-}
-
-// Функция удаления товара из корзины
-const removeFromCart = async (index, item) => {
-  cart1.value.splice(index, 1)
-  localStorage.setItem('cart', JSON.stringify(cart1.value))
-  if (item.id) {
-    await supabase.from('cart_items').delete().eq('id', item.id)
-  }
-}
 /*
 const updateQuantity = async (index, item, newQty) => {
   if (newQty < 1) return
@@ -169,19 +109,47 @@ const updateQuantity = async (index, item, newQty) => {
 const totalItemsCount = computed(() => {
   return cartStore.cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
 })
-const totalFavoritesCount = computed(() => favorites.value.length)
 
-// 1. Автоматический реактивный подсчет общей суммы всей корзины
-const totalCartPrice = computed(() => {
-  return cart.value
-    .reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0)
-    .toFixed(2)
-})
 const cartStore = useCartStore()
+const { totalCartPrice } = storeToRefs(cartStore)
+
 // Деструктурируем напрямую из хранилища для использования в HTML
 // 2. Достаем массив cart реактивно (теперь Vue увидит каждое изменение)
 const { cart: cart1 } = storeToRefs(cartStore)
-const { updateQuantity } = cartStore
+const { updateQuantity, removeFromCart } = cartStore
+const validateInput = (item) => {
+  // Чистим от букв и знаков
+  item.quantity = String(item.quantity).replace(/[^0-9]/g, '')
+
+  // Проверяем максимумы и минимумы
+  if (Number(item.quantity) > 500) {
+    item.quantity = 500
+  }
+  if (Number(item.quantity) < 1 && item.quantity !== '') {
+    item.quantity = 1
+  }
+}
+
+const handleBlur = (item) => {
+  // Защита от пустой строки при потере фокуса
+  if (item.quantity === '') {
+    item.quantity = 1
+  }
+}
+/*
+const validateQuantity = () => {
+  quantity.value = String(quantity.value).replace(/[^0-9]/g, '')
+  if (Number(quantity.value) > 500) quantity.value = 500
+  if (Number(quantity.value) < 1 && quantity.value !== '') quantity.value = 1
+}
+*/
+const fixEmptyQuantity = () => {
+  if (quantity.value === '') quantity.value = 1
+}
+onMounted(() => {
+  console.log('Товары в избранном:', favoritesStore.favorites)
+  // (замените favorites1 на ваше имя массива из стора)
+})
 </script>
 
 <template>
@@ -219,7 +187,7 @@ const { updateQuantity } = cartStore
               <h2 class="purchase_title">Карзина</h2>
               <div class="purchase_products">
                 <article v-for="(item, index) in cart1" :key="index" class="product2">
-                  <router-link to="/carzina">
+                  <router-link :to="'/product/' + (item.product_id || item.id)">
                     <div class="product_image2">
                       <!-- Показывает точный снимок собранной рамы -->
                       <img :src="item.image_preview" alt="Превью рамы" />
@@ -228,7 +196,7 @@ const { updateQuantity } = cartStore
 
                   <div class="purchase_prices">
                     <div class="purchase_prices_top">
-                      <router-link to="/carzina">
+                      <router-link :to="'/product/' + (item.product_id || item.id)">
                         <h3 class="product_title2">{{ item.title }}</h3>
                         <span class="product_quantity2">{{ item.quantity }} шт.</span>
                       </router-link>
@@ -253,6 +221,8 @@ const { updateQuantity } = cartStore
                             type="text"
                             class="stepper_input2"
                             v-model.number="item.quantity"
+                            @input="validateInput(item)"
+                            @blur="handleBlur(item)"
                           />
                           <button
                             class="btn-reset stepper_btn2 stepper_btn--plus border-brand-500"
@@ -329,10 +299,9 @@ const { updateQuantity } = cartStore
                   <!-- Скидка из БД -->
                   <span v-if="product.discount" class="product_sale2">{{ product.discount }}</span>
 
-                  <router-link :to="'/product/' + product.id">
+                  <router-link :to="'/product/' + (product?.product_id || product?.id)">
                     <div class="product_image2">
-                      <!-- Тот самый канвас для отрисовки рамы -->
-                      <canvas :id="'canvas-fav-' + product.id"></canvas>
+                      <img :src="product?.image_preview || product?.image_url" alt="product" />
                     </div>
                   </router-link>
 
@@ -340,7 +309,9 @@ const { updateQuantity } = cartStore
                     <div class="purchase_prices_top">
                       <h3 class="product_title2">
                         <!-- Название из БД -->
-                        <router-link :to="product.link">{{ product.title }}</router-link>
+                        <router-link :to="'/product/' + (product?.product_id || product?.id)">{{
+                          product.title
+                        }}</router-link>
                       </h3>
                     </div>
                     <div class="purchase_prices_bottom">
@@ -353,7 +324,12 @@ const { updateQuantity } = cartStore
                     </div>
 
                     <!-- Кнопка удаления (дизлайк) -->
-                    <span class="purchase_toggle2heart" @click.prevent="toggleLike(product)">
+                    <span
+                      class="purchase_toggle2heart"
+                      @click.prevent="
+                        favoritesStore.removeFromFavorites(product.product_id || product.id)
+                      "
+                    >
                       <div class="icon_heart">
                         <svg
                           class="icon_heart2 icon_heart2--active"
@@ -372,12 +348,7 @@ const { updateQuantity } = cartStore
                 </article>
               </div>
             </div>
-            <div class="purchase_bottom">
-              <div class="purchase_totalprise">
-                <h2 class="purchase_totletitle2">Итого</h2>
-                <span class="product_totleprice2">$220.00</span>
-              </div>
-            </div>
+            <div class="purchase_bottom"></div>
             <router-link to="/favorites" class="pur_button_heart"> Показать избранное </router-link>
           </div>
         </div>

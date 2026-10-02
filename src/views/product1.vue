@@ -13,7 +13,9 @@ import { interiorsList, loadInteriors } from '../assets/interiors.js' // ука�
 import { useRoute } from 'vue-router' // Импортируем для работы с URL
 import { products, loadProducts } from '@/productsData.js'
 import { useCartStore } from '../pinia.js'
-
+import { useFavoritesStore } from '../favoritepinia.js'
+const favoritesStore = useFavoritesStore()
+const { addToFavorites1, removeFromFavorites, isFavorite } = favoritesStore
 const isPaspartuActive = ref(false)
 // Цвет кнопки
 const hasPaspartu = computed(() => isPaspartuActive.value)
@@ -2170,7 +2172,6 @@ const increaseQty = async () => {
     cart.value.map((i) => i.details),
   )
   if (cartItemIndex.value !== -1) {
-    // Берём текущую цифру, приводим к числу и передаем строго +1
     const currentQty = Number(cart.value[cartItemIndex.value].quantity || 1)
     if (currentQty < 500) {
       await cartStore.updateQuantity(
@@ -2179,14 +2180,14 @@ const increaseQty = async () => {
         currentQty + 1,
       )
     }
-  } else if (quantity.value < 500) {
-    quantity.value++
+  } else if (Number(quantity.value) < 500) {
+    // ЗАМЕНЕНО: вместо ++ преобразуем в число, прибавляем и возвращаем строку
+    quantity.value = String(Number(quantity.value) + 1)
   }
 }
 
 const decreaseQty = async () => {
   if (cartItemIndex.value !== -1) {
-    // Берём текущую цифру, приводим к числу и передаем строго -1
     const currentQty = Number(cart.value[cartItemIndex.value].quantity || 1)
     if (currentQty > 1) {
       await cartStore.updateQuantity(
@@ -2195,14 +2196,15 @@ const decreaseQty = async () => {
         currentQty - 1,
       )
     }
-  } else if (quantity.value > 1) {
-    quantity.value--
+  } else if (Number(quantity.value) > 1) {
+    // ЗАМЕНЕНО: вместо -- преобразуем в число, вычитаем и возвращаем строку
+    quantity.value = String(Number(quantity.value) - 1)
   }
 }
 const isSubmitting = ref(false)
 
 const isFavoriteSubmitting = ref(false)
-
+/*
 const addToFavorites = async () => {
   if (!currentProduct.value || isFavoriteSubmitting.value) return
   isFavoriteSubmitting.value = true
@@ -2230,7 +2232,7 @@ const addToFavorites = async () => {
 
     // 4. Делаем снимок получившейся сборки
     const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
-
+    const quantity = ref('1')
     const favoriteItem = {
       id: currentProduct.value.id,
       title: currentProduct.value.title,
@@ -2241,9 +2243,119 @@ const addToFavorites = async () => {
       link: `/product/${currentProduct.value.id}`,
     }
 
-    await favoritesStore.addToFavorites(favoriteItem)
+    await favoritesStore.addToFavorites1(favoriteItem)
   } finally {
     isFavoriteSubmitting.value = false
+  }
+}
+*/
+const addToFavorites = async () => {
+  if (!currentProduct.value || isFavoriteSubmitting.value) return
+  isFavoriteSubmitting.value = true
+
+  try {
+    // 1. Создаем скрытый холст в памяти для склеивания слоев
+    const finalCanvas = document.createElement('canvas')
+    finalCanvas.width = 600
+    finalCanvas.height = 800
+    const ctx = finalCanvas.getContext('2d')
+
+    // 2. Находим 5 экранных canvas по их ID
+    // 2. Находим 5 экранных canvas по их ID
+    const c1 = document.getElementById('photoCanvas')
+    const c2 = document.getElementById('paspartuCanvas')
+    const c3 = document.getElementById('innerFrameCanvas')
+    const c4 = document.getElementById('outerFrameCanvas')
+    const c5 = document.getElementById('glassCanvas')
+
+    // === ВСТАВЛЯТЬ СЮДА ===
+    console.log('--- ПРОВЕРКА ХОЛСТОВ В ИЗБРАННОМ ---', {
+      photo: c1 ? `Найдено (Ш:${c1.width} В:${c1.height})` : 'НЕ НАЙДЕНО!',
+      paspartu: c2 ? `Найдено (Ш:${c2.width} В:${c2.height})` : 'НЕ НАЙДЕНО!',
+      innerFrame: c3 ? `Найдено (Ш:${c3.width} В:${c3.height})` : 'НЕ НАЙДЕНО!',
+      outerFrame: c4 ? `Найдено (Ш:${c4.width} В:${c4.height})` : 'НЕ НАЙДЕНО!',
+      glass: c5 ? `Найдено (Ш:${c5.width} В:${c5.height})` : 'НЕ НАЙДЕНО!',
+    })
+
+    // 3. Поочередно копируем графику на финальный холст
+    if (c1) ctx.drawImage(c1, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c2) ctx.drawImage(c2, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c3) ctx.drawImage(c3, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c4) ctx.drawImage(c4, 0, 0, finalCanvas.width, finalCanvas.height)
+    if (c5) ctx.drawImage(c5, 0, 0, finalCanvas.width, finalCanvas.height)
+
+    // 4. Делаем снимок получившейся сборки
+    const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
+
+    // 5. Формируем полный объект товара для избранного со всеми слоями
+    const favoriteItem = {
+      id: currentProduct.value.id,
+      title: currentProduct.value.title || 'Рама в сборе',
+      price: Number((totalPrice.value / quantity.value).toFixed(2)),
+      old_price: Number(currentProduct.value.old_price || 0),
+      selectedSize: `${userWidth1.value || 0}x${userLength1.value || 0} см`,
+      image_preview: previewImage,
+      // Добавил дублирующее поле image_url для совместимости с шаблоном вашего хэдера:
+      image_url: previewImage,
+      link: `/product/${currentProduct.value.id}`,
+      details: currentDetails.value,
+
+      // Параметры всех слоев сборки рамы:
+      selected_color: selectedColor.value || null,
+      frame_type: frameType.value || 'single',
+      inner_frame_id: selectedInnerFrame.value ? String(selectedInnerFrame.value.id) : null,
+      inner_frame_name: selectedInnerFrame.value ? selectedInnerFrame.value.title : null,
+      inner_frame_color: innerFrameColor.value || null,
+      is_paspartu_active: Boolean(isPaspartuActive.value),
+      paspartu_layers: Number(paspartuLayers.value || 1),
+      top_paspartu_name: isPaspartuActive.value ? selectedTopPaspartu.value?.name || null : null,
+      bottom_paspartu_name: isPaspartuActive.value
+        ? selectedBottomPaspartu.value?.name || null
+        : null,
+      has_kant: Boolean(isPaspartuActive.value ? hasKant.value : false),
+      kant_name: isPaspartuActive.value ? selectedKant.value?.name || null : null,
+      glass_type: selectedGlassType.value || null,
+    }
+
+    // 6. Отправляем объект в стор
+    await favoritesStore.addToFavorites1(favoriteItem)
+  } finally {
+    isFavoriteSubmitting.value = false
+  }
+}
+let timer = null // Переменная для таймера (объявите её выше функции)
+
+const validateQuantity = (event) => {
+  // 1. Оставляем только цифры
+  let val = String(event.target.value).replace(/[^0-9]/g, '')
+
+  // 2. Если ввели "0", он автоматически становится "1"
+  if (val === '0') {
+    val = '1'
+  }
+
+  // 3. Убираем нули в начале составных чисел (например: 05 -> 5)
+  if (val.length > 1 && val.startsWith('0')) {
+    val = String(Number(val))
+  }
+
+  // 4. Ограничиваем максимум в 500
+  if (Number(val) > 500) {
+    val = '500'
+  }
+
+  // 5. Синхронизируем инпут с очищенным значением
+  event.target.value = val
+
+  // 6. Записываем во Vue. Если поле полностью стёрли — пишем пустую строку,
+  // чтобы Vue разрешил инпуту визуально опустеть
+  quantity.value = val
+}
+const fixEmptyQuantity = (event) => {
+  // Проверяем значение И из инпута, И из Vue
+  if (quantity.value === '' || event.target.value === '' || Number(quantity.value) < 1) {
+    quantity.value = 1
+    event.target.value = '1'
   }
 }
 </script>
@@ -2888,9 +3000,13 @@ const addToFavorites = async () => {
                             <path d="M216,136H40a8,8,0,0,1,0-16H216a8,8,0,0,1,0,16Z" />
                           </svg>
                         </button>
-
-                        <input type="text" class="stepper__input" v-model.number="quantity" />
-
+                        <input
+                          type="text"
+                          class="stepper__input"
+                          v-model="quantity"
+                          @input="validateQuantity"
+                          @blur="fixEmptyQuantity"
+                        />
                         <button
                           @click="increaseQty"
                           class="btn-reset stepper__btn stepper__btn--plus"
@@ -2921,10 +3037,21 @@ const addToFavorites = async () => {
                       </button>
                       <button
                         class="btn-reset card-info__btn card-info__btn--towishlist"
-                        @click="addToFavorites"
+                        :class="{ 'is-in-favorites': isFavorite(currentProduct?.id) }"
+                        @click="
+                          isFavorite(currentProduct?.id)
+                            ? removeFromFavorites(currentProduct?.id)
+                            : addToFavorites()
+                        "
                         :disabled="isFavoriteSubmitting"
                       >
-                        {{ isFavoriteSubmitting ? 'Добавление...' : 'Добавить в Понравившиеся' }}
+                        {{
+                          isFavoriteSubmitting
+                            ? 'Добавление...'
+                            : isFavorite(currentProduct?.id)
+                              ? '❤️ В избранном'
+                              : 'Добавить в избранное'
+                        }}
                       </button>
 
                       <div class="card-info__bottom card-bottom">
@@ -3213,6 +3340,10 @@ const addToFavorites = async () => {
 </template>
 
 <style>
+.card-info__btn--towishlist.is-in-favorites {
+  background-color: #000;
+  color: white;
+}
 .parent {
   display: flex; /* Включаем Flexbox */
   justify-content: center; /* Центрируем по горизонтали */
@@ -4638,11 +4769,6 @@ button:disabled {
   left: 0;
   bottom: 0;
   text-align: left;
-}
-
-.container {
-  margin: 0; /* Убираем маргин */
-  padding: 0; /* Убираем паддинг */
 }
 
 .frame {
