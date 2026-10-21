@@ -121,6 +121,7 @@ export const useCartStore = defineStore('cart', () => {
           product_id: Number(product.product_id || product.id),
           title: String(product.title),
           price: Number(product.price),
+          old_price: product.old_price ? Number(product.old_price) : null,
           quantity: Number(product.quantity || 1),
           size: String(product.size || product.selectedSize || '21x30см'),
           image_preview: String(product.image_preview || product.image_url || ''),

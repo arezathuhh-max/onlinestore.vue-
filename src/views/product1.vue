@@ -1493,6 +1493,8 @@ const togglePanel = (panelName) => {
 
   // 2. Управление ПАСПАРТУ
   else if (panelName === 'paspartu') {
+    hasPaspartu.value = !hasPaspartu.value // переключаем шторку
+
     isPaspartuActive.value = !isPaspartuActive.value
 
     if (isPaspartuActive.value) {
@@ -1525,7 +1527,8 @@ const closeAllPanels = () => {
   isPanelOpen.value = false
   isMenuOpen.value = false
   isMainActive.value = false
-  isPaspartuActive.value = false // ДОБАВИТЬ ЭТУ СТРОКУ
+  /*isPaspartuActive.value = false // ДОБАВИТЬ ЭТУ СТРОКУ*/
+  hasPaspartu.value = false
   // Если вторая рама не выбрана, сбрасываем кнопку на одинарную
   if (!selectedInnerFrame.value) {
     frameType.value = 'single'
@@ -2358,6 +2361,29 @@ const fixEmptyQuantity = (event) => {
     event.target.value = '1'
   }
 }
+const hoverRating = ref(null)
+// Функция отправки оценки в базу данных
+// Временный фиксированный UUID-заглушка для теста (пока нет регистрации)
+const tempUserId = '00000000-0000-0000-0000-000000000000'
+
+const sendRating = async (productId, ratingValue) => {
+  if (!productId) return
+
+  const { data, error } = await supabase.from('product_reviews').insert([
+    {
+      product_id: productId,
+      rating: ratingValue,
+    },
+  ])
+
+  if (error) {
+    console.error('Ошибка отправки оценки:', error.message)
+  } else {
+    console.log('Оценка успешно сохранена!')
+    // Вызываем вашу функцию загрузки товаров, чтобы Vue на лету скачал новые цифры из БД
+    await loadProducts(true)
+  }
+}
 </script>
 
 <template>
@@ -2629,7 +2655,7 @@ const fixEmptyQuantity = (event) => {
                     >
                       <div
                         class="card-slider__thumbs"
-                        v-if="!isPaspartuActive && !isMainActive && !isPanelOpen"
+                        v-if="!isMenuOpen && !isMainActive && !isPanelOpen"
                         :class="{
                           'is-square-shift': isSquare,
                           'is-horizontal-bottom':
@@ -2775,6 +2801,8 @@ const fixEmptyQuantity = (event) => {
                                 top: 0;
                                 z-index: 6;
                                 pointer-events: none;
+                                width: 100%; /*  ДОБАВИТЬ ЭТУ СТРОКУ */
+                                height: 100%; /*  ДОБАВИТЬ ЭТУ СТРОКУ */
                               "
                             ></canvas>
                           </div>
@@ -2810,9 +2838,40 @@ const fixEmptyQuantity = (event) => {
                         >
                       </div>
                       <h3 class="card-info__title">{{ currentProduct.title }}</h3>
-                      <div class="card-info__rate">
-                        <img src="/images/rating (4).png" alt="rate 4 of 5" />
-                        <span class="">2 отзыва</span>
+                      <!-- НОВЫЙ ИНТЕРАКТИВНЫЙ БЛОК ЗВЁЗД -->
+                      <div class="card-info__rate" @mouseleave="hoverRating = null">
+                        <div class="stars-rating">
+                          <div v-for="star in 5" :key="star" class="star-wrapper">
+                            <!-- Левая половинка звезды (0.5) -->
+                            <span
+                              class="star-half left"
+                              :class="{
+                                active:
+                                  (hoverRating !== null ? hoverRating : currentProduct?.rating) >=
+                                  star - 0.5,
+                              }"
+                              @mouseenter="hoverRating = star - 0.5"
+                              @click="sendRating(currentProduct?.id, star - 0.5)"
+                              >★</span
+                            >
+
+                            <!-- Правая половинка звезды (1.0) -->
+                            <span
+                              class="star-half right"
+                              :class="{
+                                active:
+                                  (hoverRating !== null ? hoverRating : currentProduct?.rating) >=
+                                  star,
+                              }"
+                              @mouseenter="hoverRating = star"
+                              @click="sendRating(currentProduct?.id, star)"
+                              >★</span
+                            >
+                          </div>
+                        </div>
+                        <span class="reviews-count"
+                          >{{ currentProduct?.reviews_count || 0 }} отзыва</span
+                        >
                       </div>
                       <div class="card-info__price info-price">
                         <div class="info-price__current">BYN {{ totalPrice }}</div>
@@ -3340,6 +3399,46 @@ const fixEmptyQuantity = (event) => {
 </template>
 
 <style>
+/* ОБНОВЛЕННЫЕ СТИЛИ ДЛЯ ИДЕАЛЬНОГО НАВЕДЕНИЯ ПО ПОЛОВИНКАМ */
+.stars-rating {
+  display: inline-flex;
+  gap: 2px;
+  font-size: 16px;
+}
+
+.star-wrapper {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  user-select: none;
+}
+
+/* Базовый вид половинок (серые по умолчанию) */
+.star-half {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: #e0e0e0;
+  cursor: pointer;
+}
+
+/* Обрезаем левую половинку символа */
+.star-half.left {
+  clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+}
+
+/* Обрезаем правую половинку символа */
+.star-half.right {
+  clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);
+}
+
+/* Подсветка активных половинок (при наведении или из БД) */
+.star-half.active {
+  color: #ffcc00 !important;
+}
 .card-info__btn--towishlist.is-in-favorites {
   background-color: #000;
   color: white;

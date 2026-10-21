@@ -203,6 +203,7 @@ onMounted(() => {
                     </div>
                     <div class="purchase_prices_bottom">
                       <span class="product_price2">BYN {{ item.price }}</span>
+
                       <span v-if="item.old_price" class="product_oldprice2"
                         >BYN {{ item.old_price }}</span
                       >
@@ -320,6 +321,7 @@ onMounted(() => {
                       <span v-if="product.old_price" class="product_oldprice2"
                         >BYN {{ product.old_price }}</span
                       >
+                      <div class="favourite_purchase_size__container"></div>
                       <span class="purchase_size">{{ product.selectedSize || '21x30см' }}</span>
                     </div>
 
@@ -382,6 +384,9 @@ onMounted(() => {
 </template>
 
 <style>
+.favourite_purchase_size__container {
+}
+
 .parent10 {
   margin: 0;
   padding: 0;
