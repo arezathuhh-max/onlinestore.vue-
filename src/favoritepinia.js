@@ -96,24 +96,22 @@ export const useFavoritesStore = defineStore('favorites', () => {
   const favorites = ref(JSON.parse(localStorage.getItem('favorites')) || [])
 
   const addToFavorites1 = async (product) => {
-    // Проверяем дубликаты по product_id или id
+    // ИСПРАВЛЕНО: Проверяем дубликаты строго по product_id
     const exists = favorites.value.some(
-      (item) => String(item.product_id || item.id) === String(product.id),
+      (item) =>
+        String(item.product_id) === String(product.product_id) && item.details === product.details,
     )
     if (exists) return
 
-    // ВРЕМЕННО КОММЕНТИРУЕМ: так как регистрации еще нет
-    // const { data: { user } } = await supabase.auth.getUser()
-
     // Подготавливаем объект строго под колонки нашей SQL-таблицы
     const dbItem = {
-      // ВРЕМЕННО: пишем null или любой случайный uuid, так как пользователя нет
       user_id: null,
-      product_id: product.id,
+      product_id: Number(product.product_id),
       title: product.title,
       price: product.price,
       old_price: product.old_price,
-      size: product.selectedSize,
+      // ИСПРАВЛЕНО: берем правильное поле size из объекта карточки
+      size: product.size || product.selectedSize,
       image_preview: product.image_preview,
       details: product.details,
       selected_color: product.selected_color,
@@ -129,7 +127,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
       glass_type: product.glass_type,
     }
 
-    // Принудительно отправляем в базу данных Supabase без проверки на user
+    // Принудительно отправляем в базу данных Supabase
     const { data, error } = await supabase.from('favourites_items').insert(dbItem).select().single()
 
     if (!error && data) {
@@ -141,26 +139,35 @@ export const useFavoritesStore = defineStore('favorites', () => {
     localStorage.setItem('favorites', JSON.stringify(favorites.value))
   }
 
-  const removeFromFavorites = async (productId) => {
-    favorites.value = favorites.value.filter(
-      (item) => String(item.product_id || item.id) !== String(productId),
-    )
+  const removeFromFavorites = async (productId, currentDetails = null) => {
+    favorites.value = favorites.value.filter((item) => {
+      if (currentDetails) {
+        return !(String(item.product_id) === String(productId) && item.details === currentDetails)
+      }
+      return String(item.product_id) !== String(productId)
+    })
     localStorage.setItem('favorites', JSON.stringify(favorites.value))
 
-    // ВРЕМЕННО: удаляем без проверки на user_id
-    const { error } = await supabase.from('favourites_items').delete().eq('product_id', productId)
+    let query = supabase.from('favourites_items').delete().eq('product_id', productId)
 
+    if (currentDetails) {
+      query = query.eq('details', currentDetails)
+    }
+
+    const { error } = await query
     if (error) console.error('Ошибка удаления из базы:', error)
   }
 
   const isFavorite = (productId) => {
-    return favorites.value.some((item) => String(item.product_id || item.id) === String(productId))
+    // ИСПРАВЛЕНО: проверка активности сердечка строго по product_id
+    return favorites.value.some((item) => String(item.product_id) === String(productId))
   }
+
   const loadFavoritesFromDb = async () => {
-    const { data, error } = await supabase.from('favourites_items').select('*') // Скачать все столбцы таблицы
+    const { data, error } = await supabase.from('favourites_items').select('*')
 
     if (error) return console.error('Ошибка загрузки:', error)
-    if (data) favorites.value = data // Перезаписать локальный массив данными из БД
+    if (data) favorites.value = data
   }
 
   return { favorites, addToFavorites1, loadFavoritesFromDb, removeFromFavorites, isFavorite }

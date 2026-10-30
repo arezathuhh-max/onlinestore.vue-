@@ -35,59 +35,46 @@ onMounted(async () => {
   }
 })*/
 
-// Функция лайка/разлайка прямо со страницы избранного
+// Функция удаления товара из избранного
 const toggleLike = async (product) => {
   product.is_liked = false
-  product.selected_color = null
 
-  await supabase
-    .from('products')
-    .update({ is_liked: false, selected_color: null })
-    .eq('id', product.id)
+  // Удаляем строку из новой таблицы favourites_items в БД
+  await supabase.from('favourites_items').delete().eq('id', product.id)
 
+  // Мгновенно убираем товар с экрана избранного
   favoriteProducts.value = favoriteProducts.value.filter((p) => p.id !== product.id)
+
+  // Отправляем глобальный сигнал для обновления счетчика в шапке
   bus.emit('update-favorites', product)
 }
+
 onMounted(() => {
-  // Этап 1: Только загрузка и отрисовка при старте страницы
+  // Загрузка сохраненных товаров из новой таблицы избранного
   const loadStored = async () => {
     const { data, error } = await supabase
-      .from('products')
+      .from('favourites_items')
       .select('*')
-      .eq('is_liked', true)
-      .order('updated_at', { ascending: true })
+      .order('created_at', { ascending: false }) // Новые добавленные товары будут вверху списка
+
     if (!error && data) {
       favoriteProducts.value = data.map((p) => ({
         ...p,
-        link: p.link || `/product/${p.id}`, // Если ссылки нет в БД, подставится этот путь
+        is_liked: true,
+        link: p.link || `/product/${p.id}`,
         base_price: p.base_price || p.price,
-        price: p.selected_color
-          ? (p.base_price || p.price) + (p.paint_price || 0)
-          : p.base_price || p.price,
+        price: p.price,
       }))
-
-      await nextTick()
-      setTimeout(() => {
-        favoriteProducts.value.forEach((p) => {
-          drawFullFrame(
-            `canvas-${p.id}`,
-            p.frame_url,
-            200,
-            p.image_url,
-            300,
-            50,
-            p.is_stretch,
-            p.selected_color,
-          )
-        })
-      }, 100)
+    } else if (error) {
+      console.error('Ошибка Supabase:', error.message)
     }
   }
+
   loadStored()
-  // Добавить этот блок внутрь onMounted в файле favorites.vue:
+
+  // Если лайк снят в шапке сайта, мгновенно убираем товар с экрана избранного
   bus.on('update-favorites', (updatedProduct) => {
     if (!updatedProduct.is_liked) {
-      // Если лайк снят в хедере, мгновенно убираем товар с экрана избранного
       favoriteProducts.value = favoriteProducts.value.filter((p) => p.id !== updatedProduct.id)
     }
   })
@@ -103,14 +90,21 @@ onMounted(() => {
     >
       <article class="product3">
         <!-- router-link теперь и есть блок с картинкой -->
-        <router-link :to="'/product/' + favoriteProduct.id" class="favoriteProduct__image">
-          <canvas :id="'canvas-' + favoriteProduct.id">
-            /*:src="product.currentImg"*/ @mouseover="product.currentImg = product.imgHover"
-            @mouseleave="product.currentImg = product.imgDefault" alt="product-1"
-          </canvas>
+        <router-link
+          :to="`/product/${favoriteProduct.product_id}?details=${favoriteProduct.details}`"
+          class="favoriteProduct__image"
+        >
+          <img
+            :src="favoriteProduct.image_preview"
+            alt="Сборка рамы"
+            style="width: 250px; height: auto; display: block; object-fit: contain"
+          />
           <button
             class="heart-btn2"
-            :class="{ 'is-active': favoriteProduct.is_liked }"
+            :class="{
+              'is-active': favoriteProduct.is_liked,
+              'is-double': favoriteProduct.frame_type === 'double',
+            }"
             @click.prevent="toggleLike(favoriteProduct)"
           >
             <svg viewBox="0 0 24 24" width="30" height="30">
@@ -180,6 +174,13 @@ onMounted(() => {
 </template>
 
 <style>
+.heart-btn2.is-double {
+  bottom: 53px; /* Сдвинули на 5px вверх */
+  right: 55px; /* Сдвинули на 5px влево */
+}
+.heart-btn2.is-active svg {
+  fill: #ff4d4d;
+}
 .favoriteProducts-grid__content {
   display: flex;
   flex-wrap: wrap;

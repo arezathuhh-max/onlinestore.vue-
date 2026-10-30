@@ -995,15 +995,65 @@ const deleteComment = (id) => {
 }
 
 onMounted(() => {
+  // 1. Проверяем, пришли ли мы из Избранного с параметром details
+  const savedDetails = route.query.details
+
+  if (savedDetails) {
+    // 2. Ищем в массиве избранного именно эту конкретную сборку рамы
+    const favoriteItem = favoritesStore.favorites.find(
+      (item) =>
+        String(item.product_id) === String(currentProduct.value?.id || route.params.id) &&
+        item.details === savedDetails,
+    )
+
+    // 3. Если товар найден, восстанавливаем все реактивные переменные конструктора
+    if (favoriteItem) {
+      selectedColor.value = favoriteItem.selected_color
+      frameType.value = favoriteItem.frame_type || 'single'
+
+      // Внутренняя рама (если есть id в сторе, собираем объект для селекта)
+      if (favoriteItem.inner_frame_id) {
+        selectedInnerFrame.value = {
+          id: favoriteItem.inner_frame_id,
+          title: favoriteItem.inner_frame_name,
+        }
+      } else {
+        selectedInnerFrame.value = null
+      }
+      innerFrameColor.value = favoriteItem.inner_frame_color
+
+      // Паспарту и кант
+      isPaspartuActive.value = Boolean(favoriteItem.is_paspartu_active)
+      paspartuLayers.value = favoriteItem.paspartu_layers || 1
+
+      if (isPaspartuActive.value) {
+        selectedTopPaspartu.value = favoriteItem.top_paspartu_name
+          ? { name: favoriteItem.top_paspartu_name }
+          : null
+        selectedBottomPaspartu.value = favoriteItem.bottom_paspartu_name
+          ? { name: favoriteItem.bottom_paspartu_name }
+          : null
+      }
+
+      hasKant.value = Boolean(favoriteItem.has_kant)
+      if (hasKant.value) {
+        selectedKant.value = favoriteItem.kant_name ? { name: favoriteItem.kant_name } : null
+      }
+
+      // Стекло
+      selectedGlassType.value = favoriteItem.glass_type
+    } // <-- ИСПРАВЛЕНО: закрыли if (favoriteItem)
+  } // <-- ИСПРАВЛЕНО: закрыли if (savedDetails)
+
+  // 4. Инициализация слайдера Swiper (теперь запускается без сбоев)
   new Swiper('.card-related__slider', {
-    modules: [Pagination], // 2. Регистрируем модуль
+    modules: [Pagination],
     slidesPerView: 4,
     spaceBetween: 30,
     pagination: {
-      // 3. Настраиваем пагинацию
       el: '.swiper-pagination',
-      clickable: true, // Чтобы точки кликались
-      dynamicMainBullets: 6, // Отображает ровно 6 главных точек на экране
+      clickable: true,
+      dynamicMainBullets: 6,
     },
   })
 })
@@ -2257,6 +2307,20 @@ const addToFavorites = async () => {
   isFavoriteSubmitting.value = true
 
   try {
+    // === ДОБАВЛЕНО: Проверка в БД, есть ли уже этот товар с такими же деталями ===
+    const { data: existingItem, error: searchError } = await supabase
+      .from('favourites_items')
+      .select('id')
+      .eq('product_id', Number(currentProduct.value.id))
+      .eq('details', currentDetails.value)
+      .maybeSingle()
+
+    if (searchError) console.error('Ошибка проверки дубликатов:', searchError.message)
+
+    if (existingItem) {
+      isFavoriteSubmitting.value = false
+      return
+    }
     // 1. Создаем скрытый холст в памяти для склеивания слоев
     const finalCanvas = document.createElement('canvas')
     finalCanvas.width = 600
@@ -2289,17 +2353,16 @@ const addToFavorites = async () => {
 
     // 4. Делаем снимок получившейся сборки
     const previewImage = finalCanvas.toDataURL('image/jpeg', 0.8)
-
+    console.log('ПРОВЕРКА ID ТОВАРА:', currentProduct.value?.id)
     // 5. Формируем полный объект товара для избранного со всеми слоями
     const favoriteItem = {
-      id: currentProduct.value.id,
+      product_id: currentProduct.value.id,
       title: currentProduct.value.title || 'Рама в сборе',
       price: Number((totalPrice.value / quantity.value).toFixed(2)),
       old_price: Number(currentProduct.value.old_price || 0),
-      selectedSize: `${userWidth1.value || 0}x${userLength1.value || 0} см`,
+      size: `${userWidth1.value || 0}x${userLength1.value || 0} см`,
       image_preview: previewImage,
       // Добавил дублирующее поле image_url для совместимости с шаблоном вашего хэдера:
-      image_url: previewImage,
       link: `/product/${currentProduct.value.id}`,
       details: currentDetails.value,
 
@@ -2384,6 +2447,14 @@ const sendRating = async (productId, ratingValue) => {
     await loadProducts(true)
   }
 }
+const isCurrentConfigFavorite = computed(() => {
+  // Убрали .value после favorites
+  return favoritesStore.favorites.some(
+    (item) =>
+      String(item.product_id) === String(currentProduct.value?.id) &&
+      item.details === currentDetails.value,
+  )
+})
 </script>
 
 <template>
@@ -3096,10 +3167,10 @@ const sendRating = async (productId, ratingValue) => {
                       </button>
                       <button
                         class="btn-reset card-info__btn card-info__btn--towishlist"
-                        :class="{ 'is-in-favorites': isFavorite(currentProduct?.id) }"
+                        :class="{ 'is-in-favorites': isCurrentConfigFavorite }"
                         @click="
-                          isFavorite(currentProduct?.id)
-                            ? removeFromFavorites(currentProduct?.id)
+                          isCurrentConfigFavorite
+                            ? favoritesStore.removeFromFavorites(currentProduct?.id, currentDetails)
                             : addToFavorites()
                         "
                         :disabled="isFavoriteSubmitting"
@@ -3107,7 +3178,7 @@ const sendRating = async (productId, ratingValue) => {
                         {{
                           isFavoriteSubmitting
                             ? 'Добавление...'
-                            : isFavorite(currentProduct?.id)
+                            : isCurrentConfigFavorite
                               ? '❤️ В избранном'
                               : 'Добавить в избранное'
                         }}
