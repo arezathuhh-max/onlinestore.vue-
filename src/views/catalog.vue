@@ -6,7 +6,81 @@ import { bus } from './bus.js'
 import { drawFullFrame } from '../utils.js'
 import { supabase } from '../router/supabase.js'
 import { products } from '@/productsData.js'
+import { useFavoritesStore } from '../favoritepinia.js'
+const favoritesStore = useFavoritesStore()
+const isSubmittingLike = ref(false)
 
+// Единая функция лайка / дизлайка из каталога
+const toggleLike = async (product) => {
+  if (isSubmittingLike.value) return
+  isSubmittingLike.value = true
+
+  try {
+    // Формируем базовый ключ сборки (багет + цвет из фильтра или пусто)
+    const baseDetails = `catalog_${product.id}_${selectedColor.value || 'default'}`
+    const isAlreadyLiked = favoritesStore.favorites.some(
+      (item) => String(item.product_id) === String(product.id) && item.details === baseDetails,
+    )
+
+    if (isAlreadyLiked) {
+      await favoritesStore.removeFromFavorites(product.id, baseDetails)
+      return
+    }
+
+    // Находим готовый холст этого конкретного товара в каталоге
+    const canvas = document.getElementById(`canvas-${product.id}`)
+
+    // Делаем снимок холста (если холст не найден, ставим запасную картинку)
+    const previewImage = await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        const canvas = document.getElementById(`canvas-${product.id}`)
+        resolve(canvas ? canvas.toDataURL('image/jpeg', 0.6) : null) // Снизили качество до 0.6 для максимальной скорости
+      })
+    })
+    // Считаем актуальную цену (учитываем покраску, если выбран цвет)
+    const actualPrice = selectedColor.value
+      ? Number(product.price) + Number(product.paint_price || 0)
+      : Number(product.price)
+
+    // Формируем объект строго по формату вашей базы данных Supabase
+    const favoriteItem = {
+      product_id: product.id,
+      title: product.title || 'Рама из каталога',
+      price: Number(actualPrice.toFixed(2)),
+      old_price: Number(product.old_price || 0),
+      size: 'Базовый размер',
+      image_preview: previewImage,
+      link: `/product/${product.id}`,
+      details: baseDetails,
+
+      // Базовые параметры для конструктора при переходе из избранного:
+      selected_color: selectedColor.value || null,
+      frame_type: 'single',
+      inner_frame_id: null,
+      inner_frame_name: null,
+      inner_frame_color: null,
+      is_paspartu_active: false,
+      paspartu_layers: 0,
+      top_paspartu_name: null,
+      bottom_paspartu_name: null,
+      has_kant: false,
+      kant_name: null,
+      glass_type: null,
+      paspartu_top_url: null,
+      paspartu_bottom_url: null,
+      slip_url: null,
+      top_paspartu_width: 0,
+      bottom_paspartu_width: 0,
+    }
+
+    // Отправляем в ваш Pinia-стор (он сам сохранит в Supabase, LocalStorage и обновит хэдер!)
+    await favoritesStore.addToFavorites1(favoriteItem)
+  } catch (error) {
+    console.error('Ошибка при работе с избранным в каталоге:', error)
+  } finally {
+    isSubmittingLike.value = false
+  }
+}
 // 1. Создаем реактивную переменную (по умолчанию 5)
 const selectedCount = ref(5)
 
@@ -14,6 +88,7 @@ const selectedCount = ref(5)
 const setColumns = (num) => {
   selectedCount.value = num
 }
+
 // Переменные для открытия боковых фильтров (параметры сбоку)
 const isVisible = ref(true)
 const isFilterOpen = ref(true)
@@ -105,51 +180,6 @@ const selectItem2 = async (text) => {
 }
 // Функция для переключения лайка и сохранения в базу
 
-const toggleLike = async (product) => {
-  // 1. Меняем локально (мгновенный эффект для пользователя)
-  product.is_liked = !product.is_liked
-
-  // Зануление: если лайк убран, записываем null, иначе — выбранный цвет
-  product.selected_color = product.is_liked ? selectedColor.value : null
-  product.color_name = product.selected_color
-
-  bus.emit('update-favorites', product)
-
-  if (product.is_liked) {
-    // Ждем обновления DOM и рисуем раму
-    nextTick(() => {
-      drawFullFrame(
-        `canvas-fav-${product.id}`,
-        product.textureUrl,
-        150,
-        product.photoUrl,
-        200,
-        20,
-        product.isStretch,
-        product.color_name,
-      )
-    })
-    /* bus.emit('draw-frame', product) // Отправляем данные товара напрямую в хедер*/
-  }
-
-  // 2. Сохраняем в Supabase (лайк и зануление/запись цвета одним запросом)
-  const { error } = await supabase
-    .from('products')
-    .update({
-      is_liked: product.is_liked,
-      selected_color: product.selected_color,
-    })
-    .eq('id', product.id)
-
-  if (error) {
-    console.error('Ошибка при сохранении лайка:', error.message)
-    // Откат изменений при ошибке
-    product.is_liked = !product.is_liked
-    product.selected_color = product.is_liked ? selectedColor.value : null
-    product.color_name = product.selected_color
-    bus.emit('update-favorites', product)
-  }
-}
 const selectedCategory = ref('all') // Переменная для хранения активного фильтра
 
 const fetchProducts = async () => {
@@ -1054,8 +1084,15 @@ const selectProduct = (product) => {
                       </canvas>
                       <button
                         class="heart-btn2"
-                        :class="{ 'is-active': product.is_liked }"
-                        @click.prevent="toggleLike(product)"
+                        :class="{
+                          'is-active': favoritesStore.favorites.some(
+                            (item) =>
+                              String(item.product_id) === String(product.id) &&
+                              item.details ===
+                                `catalog_${product.id}_${selectedColor || 'default'}`,
+                          ),
+                        }"
+                        @click.prevent.stop="toggleLike(product)"
                       >
                         <svg viewBox="0 0 24 24" width="30" height="30">
                           <path

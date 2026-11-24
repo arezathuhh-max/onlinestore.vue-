@@ -1,5 +1,8 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
+import { supabase } from '../router/supabase.js'
+import { useFavoritesStore } from '../favoritepinia.js'
+import { drawFullFrame } from '@/utils.js'
 import Swiper from 'swiper' // ДОБАВЬТЕ ЭТУ СТРОКУ
 import '@/assets/main.css'
 
@@ -10,7 +13,10 @@ import 'swiper/css'
 import 'swiper/css/navigation'
 import 'swiper/css/pagination'
 import 'swiper/css/effect-fade'
-
+const favoritesStore = useFavoritesStore()
+const slides = ref([])
+const isSubmittingLike = ref(false)
+/*
 const slides = ref([
   {
     title: 'Заголовок 1',
@@ -147,7 +153,7 @@ const slides = ref([
 
   // ... другие слайды
 ])
-
+*/
 const element = ref([
   {
     title: 'Заголовок 1',
@@ -286,6 +292,30 @@ const element = ref([
 ])
 
 onMounted(async () => {
+  // 1. Загружаем товары из Supabase (например, первые 8 штук)
+  const { data, error } = await supabase.from('products').select('*').limit(8)
+
+  if (!error && data) {
+    slides.value = data
+
+    // 2. Ждем, пока Vue создаст теги <canvas> на странице
+    await nextTick()
+
+    // 3. Отрисовываем багет и картинку на каждом canvas
+    slides.value.forEach((slide) => {
+      drawFullFrame(
+        `canvas-${slide.id}`,
+        slide.frame_url,
+        205,
+        slide.image_url,
+        300,
+        50,
+        slide.is_stretch,
+        slide.colorName,
+      )
+    })
+  }
+
   // 1. Первый слайдер
   new Swiper('.Top-swiper', {
     modules: [Pagination, Autoplay, EffectFade],
@@ -367,6 +397,46 @@ onMounted(async () => {
     },
   })
 })
+// Функция лайка (идентичная каталогу)
+const toggleLike = async (product) => {
+  if (isSubmittingLike.value) return
+  isSubmittingLike.value = true
+
+  try {
+    const baseDetails = `catalog_${product.id}_default`
+    const isAlreadyLiked = favoritesStore.favorites.some(
+      (item) => String(item.product_id) === String(product.id) && item.details === baseDetails,
+    )
+
+    if (isAlreadyLiked) {
+      await favoritesStore.removeFromFavorites(product.id, baseDetails)
+      return
+    }
+
+    const canvas = document.getElementById(`slider-canvas-${product.id}`)
+    const previewImage = canvas ? canvas.toDataURL('image/jpeg', 0.6) : null
+
+    await favoritesStore.addToFavorites1({
+      product_id: product.id,
+      title: product.title || 'Рама из каталога',
+      price: Number(product.price),
+      old_price: Number(product.old_price || 0),
+      size: 'Базовый размер',
+      image_preview: previewImage,
+      link: `/product/${product.id}`,
+      details: baseDetails,
+      selected_color: null,
+      frame_type: 'single',
+      is_paspartu_active: false,
+      paspartu_layers: 0,
+      has_kant: false,
+      top_paspartu_width: 0,
+      bottom_paspartu_width: 0,
+    })
+  } finally {
+    isSubmittingLike.value = false
+  }
+}
 </script>
 
 <template>
@@ -498,25 +568,29 @@ onMounted(async () => {
         <div class="swiper-container-wrapper">
           <div class="new_slider swiper">
             <div class="swiper-wrapper">
-              <div class="swiper-slide" v-for="(slide, index) in slides" :key="index">
-                <router-link
-                  :to="`/product/${slide.id}`"
-                  class="new_slide"
-                  :style="{
-                    backgroundImage: `url(${slide.isHovered ? slide.hoverImage : slide.image})`,
-                  }"
-                  @mouseenter="slide.isHovered = true"
-                  @mouseleave="slide.isHovered = false"
-                >
+              <div class="swiper-slide" v-for="slide in slides" :key="slide.id">
+                <router-link :to="`/product/${slide.id}`" class="new_slide">
+                  <!-- Единый canvas для отрисовки рамы -->
+                  <canvas
+                    :id="`canvas-${slide.id}`"
+                    width="300"
+                    height="400"
+                    style="width: 100%; height: 100%; display: block"
+                  ></canvas>
                   <!-- Плашка скидки -->
-
                   <div v-if="slide.discount" class="discount-badge">{{ slide.discount }}</div>
 
                   <!-- Кнопка-сердечко -->
                   <button
                     class="heart-btn"
-                    :class="{ 'is-active': slide.isLiked }"
-                    @click.prevent="slide.isLiked = !slide.isLiked"
+                    :class="{
+                      'is-active': favoritesStore.favorites.some(
+                        (item) =>
+                          String(item.product_id) === String(slide.id) &&
+                          item.details === `catalog_${slide.id}_default`,
+                      ),
+                    }"
+                    @click.prevent.stop="toggleLike(slide)"
                   >
                     <svg viewBox="0 0 24 24" width="30" height="30">
                       <path
@@ -525,15 +599,18 @@ onMounted(async () => {
                     </svg>
                   </button>
                 </router-link>
+
                 <div class="slide_text">
                   <router-link to="/catalog">
                     <h3>{{ slide.title }}</h3>
                   </router-link>
 
                   <div class="price-row">
-                    <p class="slide_p">{{ slide.text }}</p>
+                    <p class="slide_p">{{ slide.text || slide.description }}</p>
                     <span class="current-price">{{ slide.price }} ₽</span>
-                    <span v-if="slide.oldPrice" class="old-price">{{ slide.oldPrice }} ₽</span>
+                    <span v-if="slide.old_price || slide.oldPrice" class="old-price">
+                      {{ slide.old_price || slide.oldPrice }} ₽
+                    </span>
                   </div>
                 </div>
               </div>

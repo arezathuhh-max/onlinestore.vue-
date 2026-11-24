@@ -4,13 +4,12 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import '@/assets/main.css'
 import 'swiper/css/pagination'
 import Swiper from 'swiper'
-import { bus } from '../views/bus.js'
 import { storeToRefs } from 'pinia' // 1. Импортируем инструмент реактивности
 
 import { supabase } from '../router/supabase.js'
 import { interiorsList, loadInteriors } from '../assets/interiors.js' // укажите ваш точный путь к файлу
 
-import { useRoute } from 'vue-router' // Импортируем для работы с URL
+import { useRoute, useRouter } from 'vue-router' // <--- ПРОВЕРЬТЕ ЭТУ СТРОКУ
 import { products, loadProducts } from '@/productsData.js'
 import { useCartStore } from '../pinia.js'
 import { useFavoritesStore } from '../favoritepinia.js'
@@ -19,6 +18,7 @@ const { addToFavorites1, removeFromFavorites, isFavorite } = favoritesStore
 const isPaspartuActive = ref(false)
 // Цвет кнопки
 const hasPaspartu = computed(() => isPaspartuActive.value)
+const router = useRouter()
 
 const isMenuOpen = ref(false) // Видимость меню
 const topPaspartuImg = new Image()
@@ -910,6 +910,7 @@ function renderAll() {
     selectedInnerFrame.value,
   )
 }
+const initialDetails = ref(null)
 
 // Отрисовка холста при первой загрузке страницы карточки
 onMounted(async () => {
@@ -917,6 +918,8 @@ onMounted(async () => {
   dbFrames.value = products.value
   renderAll()
   await loadInteriors()
+  await nextTick()
+  initialDetails.value = currentDetails.value
 })
 // Управление видимостью формы
 const showForm = ref(false)
@@ -993,7 +996,6 @@ const toggleDislike = (comment) => {
 const deleteComment = (id) => {
   comments.value = comments.value.filter((comment) => comment.id !== id)
 }
-
 onMounted(() => {
   // 1. Проверяем, пришли ли мы из Избранного с параметром details
   const savedDetails = route.query.details
@@ -1008,44 +1010,75 @@ onMounted(() => {
 
     // 3. Если товар найден, восстанавливаем все реактивные переменные конструктора
     if (favoriteItem) {
+      console.log('ЧТО ПРИЛЕТЕЛО ИЗ ИЗБРАННОГО:', JSON.parse(JSON.stringify(favoriteItem)))
+      console.log('Флаг паспарту:', favoriteItem.is_paspartu_active)
       selectedColor.value = favoriteItem.selected_color
       frameType.value = favoriteItem.frame_type || 'single'
 
-      // Внутренняя рама (если есть id в сторе, собираем объект для селекта)
-      if (favoriteItem.inner_frame_id) {
+      // Внутренняя рама
+      if (favoriteItem.inner_frame_name) {
         selectedInnerFrame.value = {
-          id: favoriteItem.inner_frame_id,
-          title: favoriteItem.inner_frame_name,
+          frame_url: savedDetails.split('_')[3],
         }
       } else {
         selectedInnerFrame.value = null
       }
       innerFrameColor.value = favoriteItem.inner_frame_color
 
-      // Паспарту и кант
+      // Паспарту
       isPaspartuActive.value = Boolean(favoriteItem.is_paspartu_active)
       paspartuLayers.value = favoriteItem.paspartu_layers || 1
 
+      // ВОССТАНАВЛИВАЕМ ШИРИНУ ПОЛЕЙ ИЗ БД:
+      topPaspartuWidth.value = favoriteItem.top_paspartu_width || 5 // 5 или ваш дефолт
+      bottomPaspartuWidth.value = favoriteItem.bottom_paspartu_width || 5
       if (isPaspartuActive.value) {
-        selectedTopPaspartu.value = favoriteItem.top_paspartu_name
-          ? { name: favoriteItem.top_paspartu_name }
-          : null
-        selectedBottomPaspartu.value = favoriteItem.bottom_paspartu_name
-          ? { name: favoriteItem.bottom_paspartu_name }
-          : null
+        // 1. Верхнее паспарту (поиск по image)
+        console.log('ПРОВЕРКА ДАННЫХ:', {
+          из_базы: favoriteItem.paspartu_top_url,
+          из_массива: paspartuList.value?.map((p) => p.image),
+        })
+        const topPas = paspartuList.value?.find((p) => p.image === favoriteItem.paspartu_top_url)
+        selectedTopPaspartu.value =
+          topPas ||
+          (favoriteItem.paspartu_top_url ? { image: favoriteItem.paspartu_top_url } : null)
+
+        // 2. Нижнее паспарту (поиск по image)
+        const bottomPas = paspartuList.value?.find(
+          (p) => p.image === favoriteItem.paspartu_bottom_url,
+        )
+        selectedBottomPaspartu.value =
+          bottomPas ||
+          (favoriteItem.paspartu_bottom_url ? { image: favoriteItem.paspartu_bottom_url } : null)
+      } else {
+        selectedTopPaspartu.value = null
+        selectedBottomPaspartu.value = null
       }
 
+      // Кант-слип
       hasKant.value = Boolean(favoriteItem.has_kant)
-      if (hasKant.value) {
-        selectedKant.value = favoriteItem.kant_name ? { name: favoriteItem.kant_name } : null
+      if (isPaspartuActive.value && hasKant.value) {
+        // 3. Кант/Слип (поиск по image)
+        const kantObj = kantList.value?.find((k) => k.image === favoriteItem.slip_url)
+        selectedKant.value =
+          kantObj || (favoriteItem.slip_url ? { image: favoriteItem.slip_url } : null)
+      } else {
+        selectedKant.value = null
       }
-
       // Стекло
       selectedGlassType.value = favoriteItem.glass_type
-    } // <-- ИСПРАВЛЕНО: закрыли if (favoriteItem)
-  } // <-- ИСПРАВЛЕНО: закрыли if (savedDetails)
+      // === ЗАКРЫВАЕМ ШТОРКУ ПАСПАРТУ ===
+      isMenuOpen.value = false // Теперь закроется 100% после всех фоновых процессов
 
-  // 4. Инициализация слайдера Swiper (теперь запускается без сбоев)
+      // === ИСПРАВЛЕНО: Правильный вызов функции отрисовки ===
+      setTimeout(() => {
+        if (typeof renderAll === 'function') renderAll()
+        isInitialLoading.value = false
+      }, 300)
+    }
+  }
+
+  // 4. Инициализация слайдера Swiper
   new Swiper('.card-related__slider', {
     modules: [Pagination],
     slidesPerView: 4,
@@ -1057,6 +1090,7 @@ onMounted(() => {
     },
   })
 })
+
 const frameType = ref('single')
 
 const handlePhotoUpload = (event) => {
@@ -1436,6 +1470,7 @@ const pasportuPrice = () => {
 
 // Флаг для скрытия контента по нажатию на SVG-крестик
 const isKantContentHidden = ref(false)
+const isInitialLoading = ref(true)
 
 // Наблюдатель за кнопкой "Добавить паспарту" для полной очистки при удалении
 watch(isPaspartuActive, (isActive) => {
@@ -1450,7 +1485,11 @@ watch(isPaspartuActive, (isActive) => {
     // ПРЯМОЙ ВЫЗОВ ДЛЯ МГНОВЕННОГО СТИРАНИЯ С ХОЛСТА
     renderAll()
   } else {
-    isMenuOpen.value = true
+    // Если страница только загрузилась — шторку НЕ открываем.
+    // При всех последующих кликах пользователя — открываем!
+    if (!isInitialLoading.value) {
+      isMenuOpen.value = true
+    }
   }
 })
 // Размеры стекла
@@ -2066,19 +2105,27 @@ const addToCart = async () => {
 */
 const currentDetails = computed(() => {
   return [
-    currentProduct.value?.frame_url || '',
-    selectedColor.value || '',
+    currentProduct.value?.id || '',
+    selectedColor.value || 'default',
+    // ВСТАВЛЕНО СЮДА: размеры теперь реактивно меняют строку деталей!
+    userWidth1.value || 0,
+    userLength1.value || 0,
+
     frameType.value || 'single',
     selectedInnerFrame.value?.frame_url || '',
     innerFrameColor.value || '',
+
     isPaspartuActive.value ? 'paspartu-on' : 'paspartu-off',
     isPaspartuActive.value ? selectedTopPaspartu.value?.image || '' : '',
     isPaspartuActive.value ? selectedBottomPaspartu.value?.image || '' : '',
+
     isPaspartuActive.value && hasKant.value ? 'kant-on' : 'kant-off',
     isPaspartuActive.value && hasKant.value ? selectedKant.value?.image || '' : '',
+
     selectedGlassType.value || '',
   ].join('_')
 })
+
 const addToCart = async () => {
   if (!currentProduct.value || isSubmitting.value) return
   isSubmitting.value = true // Блокируем кнопку перед запросом
@@ -2381,6 +2428,14 @@ const addToFavorites = async () => {
       has_kant: Boolean(isPaspartuActive.value ? hasKant.value : false),
       kant_name: isPaspartuActive.value ? selectedKant.value?.name || null : null,
       glass_type: selectedGlassType.value || null,
+      paspartu_top_url: isPaspartuActive.value ? selectedTopPaspartu.value?.image || null : null,
+      paspartu_bottom_url: isPaspartuActive.value
+        ? selectedBottomPaspartu.value?.image || null
+        : null,
+      slip_url: isPaspartuActive.value && hasKant.value ? selectedKant.value?.image || null : null,
+      // Допишите эти две строки:
+      top_paspartu_width: Number(topPaspartuWidth.value || 0),
+      bottom_paspartu_width: Number(bottomPaspartuWidth.value || 0),
     }
 
     // 6. Отправляем объект в стор
@@ -2447,14 +2502,63 @@ const sendRating = async (productId, ratingValue) => {
     await loadProducts(true)
   }
 }
-const isCurrentConfigFavorite = computed(() => {
-  // Убрали .value после favorites
-  return favoritesStore.favorites.some(
-    (item) =>
-      String(item.product_id) === String(currentProduct.value?.id) &&
-      item.details === currentDetails.value,
-  )
+// 1. Создаем флаг изменений в скрипте карточки:
+const isChanged = ref(false)
+
+// 2. Следим за строкой конструктора: как только параметры изменились — флаг станет true
+onMounted(async () => {
+  // Ждем, пока соберутся все стартовые холсты и дефолтная строка деталей
+  await nextTick()
+
+  // Включаем слежку ТОЛЬКО ТЕПЕРЬ, когда инициализация страницы завершена
+  watch(currentDetails, () => {
+    isChanged.value = true
+  })
 })
+
+// 3. Твой итоговый computed:
+const isCurrentConfigFavorite = computed(() => {
+  // Принудительно заставляем Vue следить за ползунками размеров в карточке
+  const currentWidth = userWidth1.value
+  const currentLength = userLength1.value
+
+  return favoritesStore.favorites.some((item) => {
+    if (String(item.product_id) !== String(currentProduct.value?.id)) return false
+
+    // Если лайк пришел из каталога
+    if (item.details.startsWith('catalog_')) {
+      // 1. Достаем цвет, с которым товар был лайкнут в каталоге
+      const parts = item.details.split('_')
+      const catalogColor = parts[parts.length - 1] || 'default'
+      const currentColor = selectedColor.value || 'default'
+
+      // 2. Проверяем, изменились ли размеры с дефолтных (обычно это 40х50 или 0х0 при старте)
+      // Мы сравниваем текущие значения с начальными. Если они сдвинулись — лайк должен погаснуть!
+      const isSizeChanged = initialDetails.value && currentDetails.value !== initialDetails.value
+
+      // Лайк горит только если паспарту выключено, цвет совпадает и ПОЛЗУНКИ НЕ ДВИГАЛИ
+      return !isPaspartuActive.value && currentColor === catalogColor && !isSizeChanged
+    }
+
+    // Для лайков из самой карточки — строгое совпадение строк сборки конструктора
+    return item.details === currentDetails.value
+  })
+})
+
+// Функция выбора паспарту
+const selectPaspartu = (item, layer = 'top') => {
+  if (layer === 'top') {
+    selectedTopPaspartu.value = item
+  } else if (layer === 'bottom') {
+    selectedBottomPaspartu.value = item
+  }
+}
+
+// Функция выбора канта (слипа)
+const selectKantItem = (item) => {
+  selectedKant.value = item
+}
+const isConfigChanged = ref(false)
 </script>
 
 <template>
@@ -3170,10 +3274,17 @@ const isCurrentConfigFavorite = computed(() => {
                         :class="{ 'is-in-favorites': isCurrentConfigFavorite }"
                         @click="
                           isCurrentConfigFavorite
-                            ? favoritesStore.removeFromFavorites(currentProduct?.id, currentDetails)
+                            ? favoritesStore.removeFromFavorites(
+                                currentProduct?.id,
+                                favoritesStore.favorites.find(
+                                  (item) =>
+                                    String(item.product_id) === String(currentProduct?.id) &&
+                                    (item.details === currentDetails ||
+                                      item.details.startsWith('catalog_')),
+                                )?.details,
+                              )
                             : addToFavorites()
                         "
-                        :disabled="isFavoriteSubmitting"
                       >
                         {{
                           isFavoriteSubmitting
@@ -3186,12 +3297,15 @@ const isCurrentConfigFavorite = computed(() => {
 
                       <div class="card-info__bottom card-bottom">
                         <div class="card-botttom__item">
-                          <span> Sku:</span> <span class="card-botttom__item-color">fw511</span>
+                          <span>Артикул поставщика:</span>
+                          <span class="card-botttom__item-color">{{ currentProduct?.sku }}</span>
                         </div>
+
                         <div class="card-botttom__item">
-                          <span>Category:</span>
-                          <span class="card-botttom__item-color">trousers,</span>
-                          <span class="card-botttom__item-color">life style</span>
+                          <span>Категория багета:</span>
+                          <span class="card-botttom__item-color">{{
+                            currentProduct?.category
+                          }}</span>
                         </div>
                       </div>
                     </div>
@@ -3349,15 +3463,15 @@ const isCurrentConfigFavorite = computed(() => {
                   <div class="swiper-slide">
                     <article class="product3">
                       <div class="product__image">
-                        <img src="/images/works22 (1) (2) (3).png" alt="product-1" />
+                        <canvas> </canvas>
                       </div>
-                      <span class="product-prop product__prop best">Хит продаж</span>
+                      <span class="product-prop product__prop best">currentProduct.value.</span>
 
                       <h3 class="product__title2">
-                        <a href="#"> Eyes Mesh Boat Shoes </a>
+                        <a href="#"> currentProduct.value.text</a>
                       </h3>
 
-                      <span class="product__price2">$220.00 </span>
+                      <span class="product__price2">currentProduct.value.price</span>
                     </article>
                   </div>
 
@@ -3398,7 +3512,6 @@ const isCurrentConfigFavorite = computed(() => {
                       <div class="product-custom">
                         <div class="product-custom__price">
                           <span class="product__price2">$220.00 </span>
-
                           <span class="product__oldprice">$210.00</span>
                         </div>
                       </div>

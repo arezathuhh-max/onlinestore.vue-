@@ -125,6 +125,11 @@ export const useFavoritesStore = defineStore('favorites', () => {
       has_kant: product.has_kant,
       kant_name: product.kant_name,
       glass_type: product.glass_type,
+      paspartu_top_url: product.paspartu_top_url,
+      paspartu_bottom_url: product.paspartu_bottom_url,
+      slip_url: product.slip_url,
+      top_paspartu_width: product.top_paspartu_width,
+      bottom_paspartu_width: product.bottom_paspartu_width,
     }
 
     // Принудительно отправляем в базу данных Supabase

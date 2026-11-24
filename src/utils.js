@@ -17,6 +17,8 @@ export function drawFullFrame(
   Object.assign(canvas, { width: frameW, height: frameH })
 
   const img = new Image()
+  img.crossOrigin = 'anonymous' // <-- ДОБАВИТЬ СЮДА
+
   img.src = textureUrl
 
   img.onload = () => {
@@ -131,6 +133,8 @@ export function drawFullFrame(
 
     // 1. Создаем объект для внутреннего фото
     const photo = new Image()
+    photo.crossOrigin = 'anonymous' // <-- ДОБАВИТЬ СЮДА
+
     photo.src = photoUrl // Замените на нужный URL
     photo.onload = () => {
       // 2. Рисуем фото строго в границах внутреннего проема

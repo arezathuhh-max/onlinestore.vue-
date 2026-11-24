@@ -1,12 +1,12 @@
 <script setup>
 import { onMounted, onUnmounted, nextTick, watch, ref, computed } from 'vue'
-import { bus } from '../views/bus.js'
 import { drawFullFrame } from '../utils.js'
 import { storeToRefs } from 'pinia' // 1. Импортируем инструмент реактивности
 
 import { createClient } from '@supabase/supabase-js'
 import { useCartStore } from '../pinia.js' // Путь к пиниа.js
 import { useFavoritesStore } from '../favoritepinia.js'
+import { bus } from '../views/bus.js'
 
 // Подключаем стор
 const favoritesStore = useFavoritesStore()
@@ -19,9 +19,7 @@ const { removeFromFavorites } = favoritesStore
 const totalFavoritesCount = computed(() => favorites.value.length)
 
 // Функция удаления товара при клике на сердечко внутри выпадающего списка
-const toggleLike = (product) => {
-  favoritesStore.removeFromFavorites(product.id)
-}
+
 const supabase = createClient(
   'https://aqfposmbxcqbpumvydhb.supabase.co',
   'sb_publishable_fhBTokXYW4pHJx2MI78jSA_9nysDSdd',
@@ -42,49 +40,6 @@ const props = defineProps(['products'])
 const likedProducts = computed(() => (props.products || []).filter((p) => p.is_liked))
 
 onMounted(() => {
-  bus.on('update-favorites', (updatedProduct) => {
-    const index = favorites.value.findIndex((p) => p.id === updatedProduct.id)
-
-    if (updatedProduct.is_liked) {
-      // Гарантируем наличие базовой цены для расчетов
-      const basePrice = updatedProduct.base_price || updatedProduct.price
-      const paintPrice = updatedProduct.paint_price || 0
-
-      // Вычисляем финальную цену: если цвет выбран, плюсуем покраску
-      const finalPrice =
-        updatedProduct.color_name || updatedProduct.selected_color
-          ? basePrice + paintPrice
-          : basePrice
-
-      const productToSave = {
-        ...updatedProduct,
-        base_price: basePrice,
-        price: finalPrice,
-      }
-
-      if (index === -1) {
-        favorites.value.push(productToSave)
-        nextTick(() =>
-          setTimeout(() => {
-            drawFullFrame(
-              `canvas-fav-${updatedProduct.id}`,
-              updatedProduct.frame_url,
-              120,
-              updatedProduct.image_url,
-              120,
-              40,
-              updatedProduct.is_stretch,
-              updatedProduct.color_name || updatedProduct.selected_color,
-            )
-          }, 100),
-        )
-      } else {
-        favorites.value[index] = productToSave
-      }
-    } else if (index !== -1) {
-      favorites.value.splice(index, 1)
-    }
-  })
   // Загружаем сохраненную корзину из localStorage и Supabase при старте
 
   // Слушаем добавление в корзину из конструктора
@@ -329,7 +284,10 @@ onMounted(() => {
                     <span
                       class="purchase_toggle2heart"
                       @click.prevent="
-                        favoritesStore.removeFromFavorites(product.product_id || product.id)
+                        favoritesStore.removeFromFavorites(
+                          product.product_id || product.id,
+                          product.details,
+                        )
                       "
                     >
                       <div class="icon_heart">

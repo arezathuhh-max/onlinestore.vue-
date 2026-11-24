@@ -4,6 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 import { drawFullFrame } from '../utils.js'
 import { bus } from './bus.js'
 import { supabase } from '../router/supabase.js'
+import { useFavoritesStore } from '../favoritepinia.js' // Проверьте правильный путь к файлу стора
+
+const favoritesStore = useFavoritesStore()
 const selectedCount = ref(5)
 // 1. Инициализация клиента базы данных
 
@@ -35,18 +38,15 @@ onMounted(async () => {
   }
 })*/
 
-// Функция удаления товара из избранного
+// 2. Полностью замените функцию toggleLike на эту версию:
 const toggleLike = async (product) => {
   product.is_liked = false
 
-  // Удаляем строку из новой таблицы favourites_items в БД
-  await supabase.from('favourites_items').delete().eq('id', product.id)
+  // ИСПРАВЛЕНО: Удаляем через единый Pinia-стор, который очистит и БД Supabase, и мини-корзину хедера!
+  await favoritesStore.removeFromFavorites(product.product_id || product.id, product.details)
 
   // Мгновенно убираем товар с экрана избранного
   favoriteProducts.value = favoriteProducts.value.filter((p) => p.id !== product.id)
-
-  // Отправляем глобальный сигнал для обновления счетчика в шапке
-  bus.emit('update-favorites', product)
 }
 
 onMounted(() => {
